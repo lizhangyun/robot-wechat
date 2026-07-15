@@ -12,3 +12,13 @@ python-multipart==0.0.9
 jinja2==3.1.4
 loguru==0.7.2
 pywin32==306;sys_platform=='win32'
+
+# === 基础设施层 (可选依赖, 缺失时自动降级为内存方案, 详见 infrastructure/) ===
+# AES-256 加密数据库 (对应原软件 wxsqlite3 AES-256); 缺失则降级为普通 SQLite
+pysqlcipher3==1.2.0
+# RabbitMQ 消息队列 (对应原软件 AMQP); 缺失则降级为内存 asyncio.Queue
+aio-pika==9.4.1
+# Memcached 缓存 (对应原软件 Memcached 缓存层); 缺失则降级为内存字典缓存
+aiomcache==0.8.2
+# Apache Solr 全文搜索 HTTP 客户端 (对应原软件 Solr); 缺失则降级为内存字符串匹配搜索
+aiohttp==3.9.5

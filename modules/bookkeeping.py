@@ -7,7 +7,11 @@
 - 按群组、银行、用户维度统计；
 - 生成日报/周报/月报；
 - 支持后端 API 同步（jizhang_domain）；
-- 关键词触发机制（可配置触发关键词）。
+- 关键词触发机制（可配置触发关键词）；
+- 银行/渠道白名单校验（不在白名单则拒绝记账）；
+- 消息分片发送（超过 max_lines 自动分片）；
+- AckMessage 确认机制（确保确认消息送达）；
+- 多配置实例支持（通过 JizhangConfigManager）。
 
 指令格式：
     记账 <金额> <银行名称> [备注]
@@ -18,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import re
 import sys
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
@@ -35,6 +40,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from config.instance_config import InstanceConfig
 from database import Base, Database
+from modules.jizhang_config import JizhangConfig, JizhangConfigManager
+from modules.message_splitter import MessageSplitter
+from network.ack_manager import AckManager
+from security.keyword_decoder import KeywordDecoder
 from wechat.hook_interface import WeChatHookInterface
 from wechat.message_types import MessageData, MessageType
 
@@ -71,10 +80,111 @@ class BookkeepingRecord(Base):
 
 
 # ====================================================================== #
+#  银行/渠道白名单校验器
+# ====================================================================== #
+class BankWhitelistValidator:
+    """银行/渠道名称白名单校验器。
+
+    对应原软件 keyword 解密后包含的银行名称白名单：
+      - 仅允许白名单中的渠道名称进行记账；
+      - 常见渠道：工商银行、建设银行、微信、支付宝；
+      - 白名单为空时表示不限制（允许所有渠道）。
+
+    Args:
+        whitelist: 银行/渠道名称列表。为空时允许所有渠道。
+    """
+
+    def __init__(self, whitelist: Optional[list[str]] = None) -> None:
+        self.whitelist: set[str] = set(whitelist or [])
+
+    def is_allowed(self, bank_name: str) -> bool:
+        """校验银行名称是否在白名单中。
+
+        Args:
+            bank_name: 银行/渠道名称。
+
+        Returns:
+            白名单为空时返回 True（不限制）；否则返回是否在白名单中。
+        """
+        if not self.whitelist:
+            return True
+        return bank_name.strip() in self.whitelist
+
+    def add(self, bank_name: str) -> None:
+        """添加渠道到白名单。"""
+        self.whitelist.add(bank_name.strip())
+
+    def remove(self, bank_name: str) -> None:
+        """从白名单移除渠道。"""
+        self.whitelist.discard(bank_name.strip())
+
+    def list_banks(self) -> list[str]:
+        """返回白名单中的所有渠道（排序后）。"""
+        return sorted(self.whitelist)
+
+    def to_dict(self) -> dict[str, Any]:
+        """转为字典。"""
+        return {
+            "whitelist": sorted(self.whitelist),
+            "enabled": bool(self.whitelist),
+        }
+
+
+# ====================================================================== #
+#  记账配置数据类
+# ====================================================================== #
+@dataclass
+class BookkeepingConfig:
+    """记账配置（整合触发词、白名单、domain 等）。
+
+    由 :class:`BookkeepingModule` 在初始化时从多个来源聚合：
+      - 实例配置 (InstanceConfig)；
+      - keyword 解密结果 (KeywordDecoder)；
+      - 多配置管理器 (JizhangConfigManager)。
+
+    Attributes:
+        config_id: 配置标识。
+        trigger_words: 触发关键词列表。
+        bank_whitelist: 银行/渠道白名单。
+        domain: 后端 API 地址。
+        enabled: 是否启用。
+        db_key: 数据库加密密钥。
+        features: 功能开关字典。
+    """
+
+    config_id: str = "default"
+    trigger_words: list[str] = field(default_factory=lambda: ["记账"])
+    bank_whitelist: list[str] = field(default_factory=list)
+    domain: str = ""
+    enabled: bool = True
+    db_key: str = ""
+    features: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_jizhang_config(cls, jc: JizhangConfig) -> "BookkeepingConfig":
+        """从 :class:`JizhangConfig` 构造。"""
+        return cls(
+            config_id=jc.config_id or "default",
+            trigger_words=list(jc.trigger_words) or ["记账"],
+            bank_whitelist=list(jc.bank_whitelist),
+            domain=jc.domain,
+            enabled=jc.enabled,
+            db_key=jc.db_key,
+            features=dict(jc.features),
+        )
+
+
+# ====================================================================== #
 #  指令解析
 # ====================================================================== #
 class BookkeepingParser:
-    """记账指令解析器。"""
+    """记账指令解析器。
+
+    支持单个或多个触发关键词。当传入列表时，按最长匹配优先。
+
+    Args:
+        keyword: 触发关键词（字符串）或关键词列表。
+    """
 
     # 默认指令格式：关键词 金额 银行名称 备注
     # 金额可为负；银行名称不含空格；备注为剩余部分（可含空格）
@@ -85,8 +195,19 @@ class BookkeepingParser:
         r"(?P<remark>.*)$"
     )
 
-    def __init__(self, keyword: str = "记账") -> None:
-        self.keyword: str = keyword
+    def __init__(self, keyword: str | list[str] = "记账") -> None:
+        if isinstance(keyword, str):
+            self.keywords: list[str] = [keyword] if keyword else ["记账"]
+        elif isinstance(keyword, (list, tuple)):
+            self.keywords = list(keyword) if keyword else ["记账"]
+        else:
+            self.keywords = ["记账"]
+        # 按长度降序排列，优先匹配最长关键词（避免 "记账" 与 "记账入" 冲突）
+        self._sorted_keywords: list[str] = sorted(self.keywords, key=len, reverse=True)
+        # 保持 keyword 属性向后兼容
+        self.keyword: str = keyword if isinstance(keyword, str) else (
+            self.keywords[0] if self.keywords else "记账"
+        )
 
     def parse(self, content: str) -> Optional[dict[str, Any]]:
         """解析消息正文。
@@ -98,9 +219,18 @@ class BookkeepingParser:
             解析结果字典 {amount, bank_name, remark}，非记账指令返回 None。
         """
         text = content.strip()
-        # 必须以触发关键词开头
-        if not text.startswith(self.keyword):
+        # 必须以某个触发关键词开头（最长匹配优先）
+        matched: Optional[str] = None
+        for kw in self._sorted_keywords:
+            if text.startswith(kw):
+                rest = text[len(kw):]
+                # 关键词后必须是空格或结尾
+                if not rest or rest[0].isspace():
+                    matched = kw
+                    break
+        if matched is None:
             return None
+
         m = self._PATTERN.match(text)
         if not m:
             return None
@@ -121,10 +251,23 @@ class BookkeepingParser:
 class BookkeepingModule:
     """记账模块。
 
+    对应原软件 jizhang 模块，支持：
+      - 多配置实例（通过 :class:`JizhangConfigManager`）；
+      - keyword AES 解密（通过 :class:`KeywordDecoder`）；
+      - 银行名称白名单校验（:class:`BankWhitelistValidator`）；
+      - 消息分片发送报表（:class:`MessageSplitter`）；
+      - AckMessage 确认消息送达（:class:`AckManager`）；
+      - 后端同步（完整的 HTTP 请求、错误处理、重试）；
+      - GBK 配置文件读取。
+
     Args:
         client: 微信客户端接口。
         db: 异步数据库管理器。
-        instance_config: 实例配置（含 jizhang_domain / jizhang_keyword）。
+        instance_config: 实例配置（含 jizhang_domain / jizhang_keyword 等）。
+        config_manager: 记账多配置管理器（可选，用于加载多套 jizhang 配置）。
+        keyword_decoder: keyword AES 解密器（可选，用于解密 jizhang_keyword）。
+        message_splitter: 消息分片器（可选，默认从 instance_config 自动创建）。
+        ack_manager: ACK 确认管理器（可选，默认从 instance_config 自动创建）。
     """
 
     def __init__(
@@ -132,22 +275,113 @@ class BookkeepingModule:
         client: WeChatHookInterface,
         db: Database,
         instance_config: Optional[InstanceConfig] = None,
+        *,
+        config_manager: Optional[JizhangConfigManager] = None,
+        keyword_decoder: Optional[KeywordDecoder] = None,
+        message_splitter: Optional[MessageSplitter] = None,
+        ack_manager: Optional[AckManager] = None,
     ) -> None:
         self.client: WeChatHookInterface = client
         self.db: Database = db
         self.instance_config: InstanceConfig = instance_config or InstanceConfig()
 
-        # 触发关键词：优先实例配置，默认 "记账"
-        self.keyword: str = "记账"
+        # 触发关键词与开关
         self.enabled: bool = self.instance_config.jizhang_enabled
         self.domain: str = self.instance_config.jizhang_domain
 
-        self.parser: BookkeepingParser = BookkeepingParser(self.keyword)
+        # 消息分片器（默认从实例配置自动创建）
+        self.message_splitter: MessageSplitter = message_splitter or MessageSplitter(
+            max_lines=self.instance_config.msg_max_lines,
+            sleep_sec=self.instance_config.msg_sleep_sec,
+        )
+
+        # ACK 确认管理器（默认从实例配置自动创建，auto_ack=True 适配模拟/标准客户端）
+        self.ack_manager: AckManager = ack_manager or AckManager(
+            timeout=self.instance_config.ack_timeout,
+            max_retries=self.instance_config.ack_max_retries,
+            auto_ack=True,
+        )
+
+        # keyword 解密器与多配置管理器
+        self.keyword_decoder: Optional[KeywordDecoder] = keyword_decoder
+        self.config_manager: Optional[JizhangConfigManager] = config_manager
+
+        # 加载记账配置（多配置聚合）
+        self._configs: dict[str, BookkeepingConfig] = {}
+        self._load_configs()
+
+        # 聚合所有配置的触发词与白名单
+        all_triggers: set[str] = set()
+        all_banks: set[str] = set()
+        for cfg in self._configs.values():
+            all_triggers.update(cfg.trigger_words)
+            all_banks.update(cfg.bank_whitelist)
+
+        trigger_list = list(all_triggers) if all_triggers else ["记账"]
+        self.parser: BookkeepingParser = BookkeepingParser(trigger_list)
+        self.bank_validator: BankWhitelistValidator = BankWhitelistValidator(
+            list(all_banks)
+        )
+
+        # 若白名单非空，记录日志
+        if all_banks:
+            logger.info(f"记账银行白名单已启用: {sorted(all_banks)}")
+
         # 群名缓存：group_wxid -> group_name
         self._group_names: dict[str, str] = {}
         # 已处理 msg_id 去重
         self._processed: set[str] = set()
         self._max_processed_cache: int = 5000
+
+    # ------------------------------------------------------------------ #
+    #  配置加载
+    # ------------------------------------------------------------------ #
+    def _load_configs(self) -> None:
+        """从多个来源加载记账配置并聚合。"""
+        # 1. 从多配置管理器加载（对应 data/app/jizhang_c1/, jizhang_c12/ 等）
+        if self.config_manager and self.instance_config.jizhang_configs:
+            for cid in self.instance_config.jizhang_configs:
+                try:
+                    jc = self.config_manager.load_config(cid)
+                    self._configs[cid] = BookkeepingConfig.from_jizhang_config(jc)
+                    if jc.domain and not self.domain:
+                        self.domain = jc.domain
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(f"加载记账配置 {cid} 失败: {exc}")
+
+        # 2. 从 keyword 解密加载（对应 config.ini 中 [jizhang] 段的 keyword 字段）
+        if self.keyword_decoder:
+            keyword_hex = (
+                self.instance_config.jizhang_keyword
+                or self.instance_config.keyword
+            )
+            if keyword_hex:
+                try:
+                    decoded = self.keyword_decoder.decrypt(keyword_hex)
+                    self._configs["keyword"] = BookkeepingConfig(
+                        config_id="keyword",
+                        trigger_words=list(decoded.get("trigger_words", [])) or ["记账"],
+                        bank_whitelist=list(decoded.get("bank_whitelist", [])),
+                        domain=self.instance_config.jizhang_domain,
+                        enabled=self.instance_config.jizhang_enabled,
+                        db_key=str(decoded.get("db_key", "")),
+                        features=dict(decoded.get("features", {})),
+                    )
+                    logger.info("keyword 解密配置已加载")
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(f"keyword 解密失败: {exc}")
+
+        # 3. 确保至少有一个默认配置
+        if not self._configs:
+            self._configs["default"] = BookkeepingConfig(
+                config_id="default",
+                trigger_words=["记账"],
+                bank_whitelist=[],
+                domain=self.instance_config.jizhang_domain,
+                enabled=self.instance_config.jizhang_enabled,
+                db_key="",
+                features={},
+            )
 
     # ------------------------------------------------------------------ #
     #  消息处理入口
@@ -178,6 +412,20 @@ class BookkeepingModule:
         if parsed is None:
             return None
 
+        # 银行白名单校验：不在白名单则拒绝记账并提示
+        if not self.bank_validator.is_allowed(parsed["bank_name"]):
+            self._mark_processed(message.msg_id)
+            reject_msg = (
+                f"记账失败: 渠道 \"{parsed['bank_name']}\" 不在白名单中\n"
+                f"允许的渠道: {', '.join(self.bank_validator.list_banks())}"
+            )
+            await self._send_confirm(message.group_wxid, reject_msg)
+            logger.info(
+                f"记账被拒绝(白名单): {parsed['bank_name']} by "
+                f"{message.sender_wxid} in {message.group_wxid}"
+            )
+            return None
+
         # 记录并回复确认
         record = await self.add_record(
             group_wxid=message.group_wxid,
@@ -192,14 +440,14 @@ class BookkeepingModule:
         )
         if record is not None:
             self._mark_processed(message.msg_id)
-            # 回复确认
+            # 回复确认（通过 AckManager 确保送达）
             confirm = (
                 f"记账成功 ✓\n"
                 f"金额: {parsed['amount']}\n"
                 f"渠道: {parsed['bank_name']}\n"
                 f"备注: {parsed['remark'] or '无'}"
             )
-            await self.client.send_text(message.group_wxid, confirm)
+            await self._send_confirm(message.group_wxid, confirm)
             # 异步同步到后端（不阻塞）
             asyncio.create_task(self.sync_to_backend(record))
         return record
@@ -210,6 +458,58 @@ class BookkeepingModule:
         if len(self._processed) > self._max_processed_cache:
             # 保留最近一半
             self._processed = set(list(self._processed)[-self._max_processed_cache // 2 :])
+
+    # ------------------------------------------------------------------ #
+    #  消息发送（AckManager / MessageSplitter 集成）
+    # ------------------------------------------------------------------ #
+    async def _send_confirm(self, wxid: str, text: str) -> bool:
+        """发送确认消息（通过 AckManager 确保送达）。
+
+        Args:
+            wxid: 接收者 wxid。
+            text: 确认消息文本。
+
+        Returns:
+            是否发送成功。
+        """
+        if self.ack_manager:
+            msg_id = AckManager.generate_msg_id("bk_confirm")
+            success = await self.ack_manager.send_with_ack(
+                self.client.send_text, msg_id, wxid, text
+            )
+            if not success:
+                logger.warning(f"确认消息通过 AckManager 发送失败: wxid={wxid}")
+            return success
+        # 无 AckManager 时直接发送
+        try:
+            result = await self.client.send_text(wxid, text)
+            return result.success
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"确认消息发送异常: {exc}")
+            return False
+
+    async def send_report(
+        self,
+        group_wxid: str,
+        period: str = "daily",
+    ) -> list[str]:
+        """生成并发送报表（使用 MessageSplitter 分片发送）。
+
+        Args:
+            group_wxid: 群 wxid。
+            period: "daily" | "weekly" | "monthly"。
+
+        Returns:
+            发送的消息 ID 列表。
+        """
+        report = await self.generate_report(period=period, group_wxid=group_wxid)
+        if self.message_splitter and self.instance_config.msg_split_enabled:
+            return await self.message_splitter.send(
+                self.client, group_wxid, report
+            )
+        # 分片未启用，直接发送
+        result = await self.client.send_text(group_wxid, report)
+        return [result.msg_id or ""]
 
     # ------------------------------------------------------------------ #
     #  增删查
@@ -414,11 +714,21 @@ class BookkeepingModule:
     # ------------------------------------------------------------------ #
     #  后端同步
     # ------------------------------------------------------------------ #
-    async def sync_to_backend(self, record: BookkeepingRecord) -> bool:
+    async def sync_to_backend(
+        self, record: BookkeepingRecord, max_retries: Optional[int] = None
+    ) -> bool:
         """将单条记录同步到后端 API（jizhang_domain）。
+
+        对应原软件通过 HTTP POST 同步每条记账记录到后端：
+          - c6801 后端: http://jacn1.huoxing111.com/6802cishi/
+          - c6802 后端: https://jizhang105.tztz.eu.org/6802cishi/
+          - URL 路径 /6802cishi/ 为固定后缀
+          - 同步状态: 0=未同步, 1=已同步, 2=同步失败
+          - 支持重试（指数退避）
 
         Args:
             record: 记账记录。
+            max_retries: 最大重试次数（默认从实例配置获取）。
 
         Returns:
             是否同步成功。
@@ -428,23 +738,56 @@ class BookkeepingModule:
         if httpx is None:
             logger.warning("httpx 未安装，跳过后端同步")
             return False
+
+        retries = (
+            max_retries
+            if max_retries is not None
+            else self.instance_config.ack_max_retries
+        )
         url = self.domain.rstrip("/") + "/api/jizhang/record"
         payload = self._record_to_dict(record)
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.post(url, json=payload)
-            ok = resp.status_code == 200
-            # 更新同步状态
-            await self._update_sync_status(record.id, 1 if ok else 2)
-            if ok:
-                logger.debug(f"记录 #{record.id} 已同步后端")
-            else:
-                logger.warning(f"记录 #{record.id} 同步后端失败: {resp.status_code}")
-            return ok
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"后端同步异常 记录#{record.id}: {e}")
-            await self._update_sync_status(record.id, 2)
-            return False
+        last_error: Optional[str] = None
+
+        for attempt in range(retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    resp = await client.post(url, json=payload)
+
+                if resp.status_code == 200:
+                    await self._update_sync_status(record.id, 1)
+                    logger.debug(
+                        f"记录 #{record.id} 已同步后端"
+                        + (f" (第 {attempt + 1} 次尝试)" if attempt > 0 else "")
+                    )
+                    return True
+
+                last_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                logger.warning(
+                    f"记录 #{record.id} 同步后端失败 (第 {attempt + 1} 次): "
+                    f"HTTP {resp.status_code}"
+                )
+            except httpx.ConnectError as exc:
+                last_error = f"连接错误: {exc}"
+                logger.warning(f"记录 #{record.id} 同步后端连接失败: {exc}")
+            except httpx.TimeoutException as exc:
+                last_error = f"超时: {exc}"
+                logger.warning(f"记录 #{record.id} 同步后端超时: {exc}")
+            except Exception as exc:  # noqa: BLE001
+                last_error = str(exc)
+                logger.warning(f"记录 #{record.id} 同步后端异常: {exc}")
+
+            # 指数退避等待（最后一次不等待）
+            if attempt < retries:
+                backoff = min(2 ** attempt, 5.0)
+                logger.debug(f"记录 #{record.id} 等待 {backoff}s 后重试")
+                await asyncio.sleep(backoff)
+
+        # 所有重试耗尽
+        await self._update_sync_status(record.id, 2)
+        logger.error(
+            f"记录 #{record.id} 同步后端最终失败 ({retries + 1} 次尝试): {last_error}"
+        )
+        return False
 
     async def sync_unsynced(self) -> int:
         """批量同步所有未同步成功的记录。
@@ -481,6 +824,40 @@ class BookkeepingModule:
         """更新群名缓存。"""
         if group_wxid:
             self._group_names[group_wxid] = group_name
+
+    # ------------------------------------------------------------------ #
+    #  配置管理
+    # ------------------------------------------------------------------ #
+    def get_configs(self) -> dict[str, BookkeepingConfig]:
+        """获取当前加载的所有记账配置。"""
+        return dict(self._configs)
+
+    def get_trigger_words(self) -> list[str]:
+        """获取所有触发关键词。"""
+        return self.parser.keywords
+
+    def get_bank_whitelist(self) -> list[str]:
+        """获取银行白名单列表。"""
+        return self.bank_validator.list_banks()
+
+    def reload_configs(self) -> None:
+        """重新加载配置（清空缓存后重新加载）。"""
+        if self.config_manager:
+            self.config_manager.clear_cache()
+        self._configs.clear()
+        self._load_configs()
+
+        # 重新聚合触发词与白名单
+        all_triggers: set[str] = set()
+        all_banks: set[str] = set()
+        for cfg in self._configs.values():
+            all_triggers.update(cfg.trigger_words)
+            all_banks.update(cfg.bank_whitelist)
+
+        trigger_list = list(all_triggers) if all_triggers else ["记账"]
+        self.parser = BookkeepingParser(trigger_list)
+        self.bank_validator = BankWhitelistValidator(list(all_banks))
+        logger.info("记账配置已重新加载")
 
     # ------------------------------------------------------------------ #
     #  工具

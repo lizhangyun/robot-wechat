@@ -7,16 +7,107 @@
 抽象接口使业务模块与具体 Hook 实现解耦：
 - 模拟模式(MockMode)与真实 Hook 模式(HookMode)均实现此接口；
 - 业务层只依赖接口，便于单测与切换底层实现。
+
+类型补充
+========
+- :data:`MessageCallback`   业务层异步消息回调（接收标准 ``MessageData``）
+- :data:`MessageHookCallback` Hook 层同步消息回调（接收原始消息字典）
+- :class:`WeChatMessage`   Hook 层原始消息数据类，可转换为标准 ``MessageData``
 """
 from __future__ import annotations
 
+import time
 from abc import ABC, abstractmethod
-from typing import Any, Awaitable, Callable
+from dataclasses import dataclass, field
+from typing import Any, Awaitable, Callable, Optional
 
-from wechat.message_types import MessageData, SendResult
+from wechat.message_types import MessageData, MessageType, SendResult
 
 # 消息回调类型：接收一条 MessageData，无返回值
 MessageCallback = Callable[[MessageData], Awaitable[None]]
+
+# Hook 层消息回调类型：接收原始消息字典，无返回值（同步）
+# 字典字段见 WeChatMessage；用于 RealWeChatClient 把 Hook 推送的消息
+# 转发给业务模块前的中间层处理。
+MessageHookCallback = Callable[[dict[str, Any]], None]
+
+
+@dataclass
+class WeChatMessage:
+    """Hook 层原始消息数据类。
+
+    表示由内存 Hook 拦截到的微信原始消息，字段尽量贴近微信内部结构，
+    尚未标准化为业务层使用的 :class:`MessageData`。可通过
+    :meth:`to_message_data` 转换。
+
+    Attributes:
+        msg_id: 微信消息ID。
+        sender_wxid: 发送者 wxid。
+        receiver_wxid: 接收者 wxid（通常为登录账号自身或群 wxid）。
+        content: 消息内容（文本/解析后文本；群消息含 ``wxid:\\n`` 前缀）。
+        msg_type: 微信原始消息类型代码（1=文本, 3=图片, 49=文件...）。
+        is_group: 是否群消息。
+        group_wxid: 群 wxid（仅群消息）。
+        at_users: 被@用户 wxid 列表。
+        raw_xml: 原始 XML 内容（部分消息类型含）。
+        timestamp: 消息时间戳（秒）。
+        extra: 扩展字段（图片路径/文件名/链接标题等），按消息类型填充。
+    """
+
+    msg_id: str = ""
+    sender_wxid: str = ""
+    receiver_wxid: str = ""
+    content: str = ""
+    msg_type: int = 1
+    is_group: bool = False
+    group_wxid: Optional[str] = None
+    at_users: list[str] = field(default_factory=list)
+    raw_xml: str = ""
+    timestamp: float = field(default_factory=time.time)
+    extra: dict[str, Any] = field(default_factory=dict)
+
+    def to_message_data(self) -> MessageData:
+        """转换为业务层标准 :class:`MessageData`。
+
+        将微信原始 ``msg_type`` 代码映射为 :class:`MessageType` 枚举，
+        其余字段直接搬移。
+        """
+        return MessageData(
+            msg_id=self.msg_id,
+            sender_wxid=self.sender_wxid,
+            receiver_wxid=self.receiver_wxid,
+            content=self.content,
+            msg_type=self.msg_type,
+            raw_xml=self.raw_xml,
+            timestamp=self.timestamp,
+            is_group=self.is_group,
+            group_wxid=self.group_wxid,
+            at_users=list(self.at_users),
+        )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "WeChatMessage":
+        """从 Hook 推送的消息字典构造。
+
+        缺失字段使用默认值，未知字段归入 ``extra``。
+        """
+        known = {
+            f for f in (
+                "msg_id", "sender_wxid", "receiver_wxid", "content",
+                "msg_type", "is_group", "group_wxid", "at_users",
+                "raw_xml", "timestamp",
+            )
+        }
+        kwargs: dict[str, Any] = {}
+        extra: dict[str, Any] = {}
+        for k, v in data.items():
+            if k in known:
+                kwargs[k] = v
+            else:
+                extra[k] = v
+        if extra:
+            kwargs["extra"] = extra
+        return cls(**kwargs)
 
 
 class APICommand:
@@ -24,6 +115,14 @@ class APICommand:
 
     对应原软件 DLL 导出的 ``api(command, params)`` 中的 command 编号，
     共 25 个槽位 (0~24)。每个槽位对应一类微信操作。
+
+    .. note::
+       本枚举是 *复刻版自身* 的统一命令编号方案，用于在模拟模式与
+       真实 Hook 模式间保持调用语义一致。它与 *原易语言软件* 逆向得到
+       的 API[0]~API[24] 函数指针表是两套编号体系（原软件的编号语义
+       见 :data:`wechat.wechat_offsets.ORIGINAL_API_TABLE`）。真实 Hook
+       模式下，:class:`wechat.wechat_client.RealWeChatClient` 会负责把
+       本枚举的命令映射为注入 DLL 的 ``api(cmd_id, json)`` 调用。
     """
 
     # === 发送类 ===
