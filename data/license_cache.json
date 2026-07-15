@@ -1,7 +1,5 @@
 {
-  "valid": true,
-  "license_id": "ROBOT3-BB306271-2582656C-D3B5-4EBD-941B-D5A8664AF2E0",
-  "issued_at": 1784096737,
-  "expire_at": 1815632737,
-  "reason": "验证成功"
+  "valid": false,
+  "reason": "许可证文件不存在: D:\\产品原型\\产品向量知识库\\robot-wechat\\data\\run.vef",
+  "last_check": 1784099104
 }
