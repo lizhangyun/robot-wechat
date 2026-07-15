@@ -137,15 +137,11 @@ def create_app(mock: bool = False) -> FastAPI:
         app.mount("/web", StaticFiles(directory=str(web_dir), html=True), name="web")
         logger.info(f"已挂载 Web 静态目录: {web_dir}")
 
-        # 根路径重定向到 Web 界面
+        # 根路径直接返回 Web 管理界面
         @app.get("/", include_in_schema=False)
-        async def root_redirect() -> dict:
-            return {
-                "message": f"{settings.app_name} 已运行",
-                "web": "/web/index.html",
-                "docs": "/docs",
-                "health": "/api/health",
-            }
+        async def root_index():
+            from fastapi.responses import FileResponse
+            return FileResponse(str(web_dir / "index.html"))
     else:
         logger.warning(f"Web 目录不存在: {web_dir}, 跳过静态文件挂载")
 
