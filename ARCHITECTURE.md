@@ -14,14 +14,17 @@
 5. [核心引擎层](#5-核心引擎层)
 6. [消息管道](#6-消息管道)
 7. [微信接口层](#7-微信接口层)
-8. [业务模块层](#8-业务模块层)
-9. [HTTP API 层](#9-http-api-层)
-10. [WebSocket 实时通信](#10-websocket-实时通信)
+8. [QQ 接口层](#8-qq-接口层)
+9. [业务模块层](#9-业务模块层)
+10. [基础设施层](#10-基础设施层)
 11. [安全模块](#11-安全模块)
 12. [网络通信层](#12-网络通信层)
-13. [Web 管理界面](#13-web-管理界面)
-14. [启动与部署](#14-启动与部署)
-15. [原软件映射表](#15-原软件映射表)
+13. [HTTP API 层](#13-http-api-层)
+14. [WebSocket 实时通信](#14-websocket-实时通信)
+15. [Web 管理界面](#15-web-管理界面)
+16. [脚本引擎](#16-脚本引擎)
+17. [启动与部署](#17-启动与部署)
+18. [原软件映射表](#18-原软件映射表)
 
 ---
 
@@ -39,10 +42,14 @@
 | Web 框架 | 无（本地GUI） | FastAPI + Uvicorn | 自动文档、异步原生、高性能 |
 | 数据库 | SQLite + wxsqlite3 | SQLite + SQLAlchemy 2.0 async | 标准ORM，支持加密扩展 |
 | HTTP 客户端 | libcurl | httpx | 异步原生，连接池管理 |
-| 消息队列 | AMQP (RabbitMQ) | asyncio.Queue 本地实现 | 单机足够，零外部依赖 |
-| 缓存 | Memcached | 内存缓存 (dict) | 单机场景下足够高效 |
-| 搜索 | Apache Solr | SQLite FTS / 内存过滤 | 无需额外服务 |
-| 脚本引擎 | Node.js/V8 (node.dll) | Python 内置 eval | 无需额外运行时 |
+| 消息队列 | AMQP (RabbitMQ) | aio-pika (降级 asyncio.Queue) | 兼容原AMQP协议，降级零依赖 |
+| 缓存 | Memcached | aiomcache (降级内存字典) | 兼容原Memcached协议，降级零依赖 |
+| 搜索 | Apache Solr | aiohttp Solr API (降级内存搜索) | 兼容原Solr接口，降级零依赖 |
+| 脚本引擎 | Node.js/V8 (node.dll) | PyMiniRacer/execJS (降级Python) | 兼容V8脚本，降级零依赖 |
+| QQ Hook | C++ DLL (qq.dll) | ctypes DLL注入 (复用注入器) | QQ NT 9.9.15 |
+| E2EE | e2eeE.com:8443 | TLS+AES-CBC+HMAC-SHA256 | 端到端加密 |
+| 防重放 | AntiReplay | 时间窗口+nonce LRU缓存 | 防重放攻击 |
+| 数据库加密 | wxsqlite3 AES-256 | pysqlcipher3 (降级SQLite) | AES-256加密 |
 | 日志 | 无 | loguru | 结构化日志，文件滚动 |
 | 数据验证 | 无 | Pydantic v2 | 类型安全，自动文档 |
 
@@ -643,7 +650,38 @@ class APICommand:
 
 ---
 
-## 8. 业务模块层
+## 8. QQ 接口层
+
+对应原软件 `qq.dll`，复用微信注入器实现 QQ NT 自动化。
+
+### 8.1 文件结构
+
+| 文件 | 功能 |
+|------|------|
+| `qq/qq_client.py` | QQ客户端（Mock + Real DLL注入双模式） |
+| `qq/qq_hook_interface.py` | QQ Hook抽象接口、API命令枚举、消息数据类 |
+| `qq/qq_offsets.py` | QQ NT 9.9.15版本偏移量表（40+函数） |
+
+### 8.2 API命令枚举
+
+```python
+class QQAPICommand(IntEnum):
+    INIT = 0          # 初始化
+    SEND_TEXT = 1     # 发送文本
+    SEND_IMAGE = 2    # 发送图片
+    GET_CONTACTS = 5  # 获取联系人
+    GET_GROUPS = 6    # 获取群列表
+    # ... 共20+命令
+```
+
+### 8.3 双模式客户端
+
+- **QQClient（Mock模式）**: 内置模拟数据（6好友/3群），开发测试用
+- **RealQQClient（Real模式）**: 复用 `DLLInjector` 注入 qq.dll，通过 `CreateRemoteThread` 调用导出函数
+
+---
+
+## 9. 业务模块层
 
 ### 8.1 记账模块 (`modules/bookkeeping.py`)
 
@@ -757,7 +795,77 @@ class APICommand:
 
 ---
 
-## 9. HTTP API 层
+## 10. 基础设施层
+
+对应原软件的 Memcached 缓存、Apache Solr 搜索等基础设施组件。
+
+### 10.1 缓存 (`infrastructure/cache.py`)
+
+| 类 | 后端 | 降级方案 |
+|----|------|---------|
+| `MemcachedCache` | aiomcache | 内存字典 |
+| `MemoryCache` | 内存dict+TTL | — |
+| `CacheManager` | 基类 | `get_or_set` 缓存穿透 |
+
+工厂函数 `create_cache(config)` 根据配置自动选择后端。
+
+### 10.2 全文搜索 (`infrastructure/search.py`)
+
+| 类 | 后端 | 降级方案 |
+|----|------|---------|
+| `SolrSearch` | aiohttp Solr REST API | 内存搜索 |
+| `MemorySearch` | 内存字符串匹配 | — |
+
+支持 `index()` 索引文档、`search()` 搜索、`delete()` 删除索引、`commit()` 提交。
+
+---
+
+## 11. 安全模块（扩展）
+
+### 11.1 keyword AES解密器 (`security/keyword_decoder.py`)
+
+对应原软件 config.ini 中 `[jizhang]` 段的 keyword 字段加密。
+
+- **算法**: AES-ECB + PKCS7 填充
+- **存储格式**: 十六进制字符串
+- **解密内容**: 触发关键词列表、银行白名单、数据库密钥、功能开关
+- `encrypt(config) -> hex_str` / `decrypt(hex_str) -> dict` / `verify(hex_str) -> bool`
+
+### 11.2 E2EE端到端加密 (`security/e2ee.py`)
+
+对应原软件 `e2eeE.com:8443` 端到端加密服务。
+
+- **传输层**: TLS 加密通道（asyncio.open_connection + SSL）
+- **应用层**: AES-CBC 加密 + HMAC-SHA256 签名
+- **防重放**: 集成 `AntiReplayManager`
+- 接口: `verify_license()` / `sync_config()` / `fetch_config()` / `heartbeat()`
+
+### 11.3 防重放机制 (`security/anti_replay.py`)
+
+对应原软件 AntiReplay 组件。
+
+- **时间窗口**: 默认 300 秒（5分钟）
+- **nonce缓存**: LRU OrderedDict，默认上限 10000 条
+- **nonce生成**: `secrets.token_hex(32)` 64字符密码学安全随机数
+- `create_request(data)` / `verify_request(request)` / `validate(timestamp, nonce)`
+
+---
+
+## 12. 网络通信层（扩展）
+
+### 12.1 AckMessage确认机制 (`network/ack_manager.py`)
+
+对应原软件 `AckMessage` 函数。
+
+- **超时**: 默认 5 秒
+- **重试**: 默认最多 3 次
+- **auto_ack模式**: 发送成功即确认（适配Mock客户端）
+- **手动确认模式**: 等待外部 `confirm()` 调用（适配真实Hook）
+- `send_with_ack(send_func, msg_id, *args)` / `confirm(msg_id)` / `wait_ack(msg_id, timeout)`
+
+---
+
+## 13. HTTP API 层
 
 ### 9.1 FastAPI 服务器 (`api/server.py`)
 
@@ -846,7 +954,7 @@ def get_engine(request: Request) -> CoreEngine:
 
 ---
 
-## 10. WebSocket 实时通信
+## 14. WebSocket 实时通信
 
 ### 10.1 WebSocketManager (`core/websocket_manager.py`)
 
@@ -1049,7 +1157,7 @@ class Message:
 
 ---
 
-## 13. Web 管理界面
+## 15. Web 管理界面
 
 ### 13.1 界面概述 (`web/index.html`)
 
@@ -1077,7 +1185,37 @@ class Message:
 
 ---
 
-## 14. 启动与部署
+## 16. 脚本引擎
+
+对应原软件 `node.dll`（Node.js/V8 嵌入式引擎），复刻版使用 `modules/script_engine.py`。
+
+### 16.1 后端选择优先级
+
+| 优先级 | 后端 | 说明 |
+|--------|------|------|
+| 1 | PyMiniRacer | V8引擎Python绑定，最接近原软件 |
+| 2 | execjs | 多后端JS执行库 |
+| 3 | Python降级 | JS→Python语法转换器 |
+
+### 16.2 消息处理接口
+
+```python
+async def handle_message(script: str, message: dict) -> dict:
+    """用JS脚本处理消息，提供上下文API"""
+```
+
+上下文变量：`message`、`send_text`、`send_image`、`get_contact`、`reply`、`result`
+
+### 16.3 函数注册
+
+```python
+engine.register_function("my_func", lambda x: x * 2)
+# JS脚本中可直接调用 my_func(21)
+```
+
+---
+
+## 17. 启动与部署
 
 ### 14.1 启动脚本 (`run.py`)
 
@@ -1163,25 +1301,28 @@ main()
 
 ---
 
-## 15. 原软件映射表
+## 18. 原软件映射表
 
 | 原软件组件 | 复刻版组件 | 说明 |
 |-----------|-----------|------|
 | `机器人172wo.exe` | `run.py` + `api/server.py` | 主程序入口 + HTTP服务器 |
 | `c6802.hx.dll` | `core/engine.py` + `modules/*` | 核心业务逻辑 |
-| `weixin.dll` | `wechat/wechat_client.py` | 微信Hook模块 |
-| `qq.dll` | （可扩展） | QQ Hook模块（预留接口） |
-| `node.dll` (V8) | Python内置 `eval()` | 脚本引擎 |
+| `weixin.dll` | `wechat/dll_injector.py` + `memory_hook.py` + `wechat_client.py` | 微信Hook注入+内存Hook+客户端 |
+| `qq.dll` | `qq/qq_client.py` + `qq/qq_hook_interface.py` | QQ Hook模块 |
+| `node.dll` (V8) | `modules/script_engine.py` (PyMiniRacer降级Python) | 脚本引擎 |
 | `ewe.dll` (易语言运行时) | Python运行时 | 开发语言运行时 |
-| `sqlite3.dll` + `wxsqlite3` | `database/` (SQLAlchemy + aiosqlite) | 数据库 |
+| `sqlite3.dll` + `wxsqlite3` | `database/encrypted_db.py` + `db_manager.py` | AES-256加密数据库 |
 | `Libcurl.dll` | `network/http_client.py` (httpx) | HTTP客户端 |
 | `libeay32.dll` (OpenSSL) | `pycryptodome` | 加密库 |
-| AMQP Client (RabbitMQ) | `network/message_queue.py` | 消息队列 |
-| `CacheProxy_*` (Memcached) | 内存缓存 (dict) | 缓存层 |
-| Apache Solr | SQLite FTS / 内存过滤 | 搜索引擎 |
+| AMQP Client (RabbitMQ) | `network/message_queue.py` (RabbitMQQueue, aio-pika) | 消息队列 |
+| `CacheProxy_*` (Memcached) | `infrastructure/cache.py` (MemcachedCache, aiomcache) | 缓存层 |
+| Apache Solr | `infrastructure/search.py` (SolrSearch, aiohttp) | 搜索引擎 |
+| E2EE (e2eeE.com:8443) | `security/e2ee.py` (TLS+AES-CBC+HMAC) | 端到端加密 |
+| AntiReplay | `security/anti_replay.py` (时间窗口+nonce LRU) | 防重放攻击 |
 | `AutoUpdater.exe` | `network/updater.py` | 自动更新器 |
-| `data/config.ini` | `config/settings.py` | 全局配置 |
+| `data/config.ini` (GBK) | `config/gbk_config.py` + `settings.py` | 全局配置 |
 | `data/app/c680X/config.ini` | `config/instance_config.py` | 实例配置 |
+| `data/app/jizhang_cX/` | `modules/jizhang_config.py` | 记账多配置 |
 | `data/run.vef` | `security/license.py` | 许可证验证 |
 | `data/data.db` | `database/models.py` (Contact表) | 联系人数据库 |
 | `data/users.db` | `database/models.py` (Instance表) | 用户/实例数据库 |
@@ -1189,18 +1330,23 @@ main()
 | `data/app/c680X/data.db` | `{instance_id}_data.db` | 实例独立数据库 |
 | `一键禁止微信自动升级.bat` | `wechat/wechat_client.py` (版本检测) | 防微信升级 |
 | API[0]~API[24] (25个槽位) | `wechat/hook_interface.py` APICommand | Hook函数指针表 |
-| `e2ee_Cache*` 系列 | `network/message_queue.py` (ACK机制) | 端到端加密缓存 |
+| `e2ee_Cache*` 系列 | `security/e2ee.py` + `network/ack_manager.py` | 端到端加密+ACK |
 | `FirewareAddBlackIP` 等 | `security/firewall.py` | IP防火墙 |
-| keyword字段AES加密 | `security/crypto.py` `encrypt_config()` | 配置加密 |
+| keyword字段AES加密 | `security/keyword_decoder.py` (AES-ECB) | 配置加密解密 |
 | `DB_Execute` / `DB_Query` 等 | `database/manager.py` CRUD方法 | 数据库操作 |
 | `BeginTransation` / `CommitTransation` | SQLAlchemy Session事务 | 事务管理 |
-| `CreateAMQPClient` / `CreateConsume` | `MessageQueue.publish()` / `subscribe()` | 消息队列 |
-| jizhang模块 | `modules/bookkeeping.py` | 记账 |
-| `CreateThread` / `BindThreadPool` | `core/thread_pool.py` | 线程池 |
-| `AppendThread` | `ThreadPoolManager.submit_task()` | 任务提交 |
-| `msg_split` status=1 | `MessagePipeline._split_message()` | 消息分片 |
-| `sleep_time` sec=1 | `MessagePipeline` 发送间隔 | 发送限速 |
-| `thread` post=50 | `thread_pool_size=50` | 线程数 |
+| `CreateAMQPClient` / `CreateConsume` | `RabbitMQQueue.publish()` / `consume()` | 消息队列 |
+| `AckMessage` | `network/ack_manager.py` (AckManager) | 消息确认机制 |
+| jizhang模块 | `modules/bookkeeping.py` + `jizhang_config.py` | 记账+多配置 |
+| `CreateThread` / `BindThreadPool` | `core/thread_pool.py` (RealThreadPool) | 线程池 |
+| `AppendThread` | `RealThreadPool.submit()` | 任务提交 |
+| `msg_split` status=1 | `modules/message_splitter.py` | 消息分片器 |
+| `sleep_time` sec=1 | `MessageSplitter` 发送间隔 | 发送限速 |
+| `thread` post=50 | `RealThreadPool` 默认50线程 | 线程数 |
+| 微信偏移量 | `wechat/wechat_offsets.py` (39个函数) | 版本3.9.12.56 |
+| QQ偏移量 | `qq/qq_offsets.py` (40+函数) | QQ NT 9.9.15 |
+| `wxsqlite3_config` / `sqlite3_key` | `EncryptedDatabase.init()` (PRAGMA key) | 数据库加密 |
+| `BeginQueryCache` / `DeleteQueryCache` | `CacheManager.get_or_set()` / `invalidate()` | 查询缓存 |
 
 ---
 
