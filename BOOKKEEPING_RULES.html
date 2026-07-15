@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>机器人3 — 记账模块（jizhang）完整规则整理</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --bg2: #1a1d28;
+    --bg3: #232735;
+    --ink: #e4e6eb;
+    --muted: #8b8fa3;
+    --accent: #5b9bf5;
+    --accent2: #f0b429;
+    --green: #4ade80;
+    --red: #f87171;
+    --rule: #2d3142;
+    --code-bg: #1e2230;
+    --code-border: #353a4d;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    padding: 0;
+  }
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 4rem;
+  }
+  /* --- Hero --- */
+  .hero {
+    text-align: center;
+    padding: 3rem 0 2rem;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 2rem;
+  }
+  .hero h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 0.5rem;
+  }
+  .hero .subtitle {
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+  /* --- TOC --- */
+  .toc {
+    background: var(--bg2);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 1.2rem 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+  .toc-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.6rem;
+  }
+  .toc ol {
+    list-style: none;
+    counter-reset: toc;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.3rem 1.5rem;
+  }
+  .toc li {
+    counter-increment: toc;
+    font-size: 0.88rem;
+  }
+  .toc li::before {
+    content: counter(toc) ".";
+    color: var(--accent);
+    font-weight: 600;
+    margin-right: 0.4rem;
+  }
+  .toc a {
+    color: var(--ink);
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+  .toc a:hover { color: var(--accent); }
+  /* --- Headings --- */
+  h2 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin-top: 2.5rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--accent);
+  }
+  h3 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--accent);
+    margin-top: 1.8rem;
+    margin-bottom: 0.6rem;
+  }
+  h4 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--accent2);
+    margin-top: 1.2rem;
+    margin-bottom: 0.4rem;
+  }
+  p {
+    margin-bottom: 0.8rem;
+  }
+  /* --- Links --- */
+  a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  a:hover { text-decoration: underline; }
+  /* --- Inline code --- */
+  code {
+    font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+    font-size: 0.85em;
+    background: var(--code-bg);
+    color: var(--accent2);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    border: 1px solid var(--code-border);
+  }
+  /* --- Code blocks --- */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 8px;
+    padding: 1rem 1.2rem;
+    overflow-x: auto;
+    margin-bottom: 1rem;
+  }
+  pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: #c8d0e0;
+    font-size: 0.82em;
+    line-height: 1.5;
+  }
+  /* --- Tables --- */
+  .table-wrap {
+    overflow-x: auto;
+    margin-bottom: 1rem;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.86rem;
+  }
+  th {
+    background: var(--bg3);
+    color: var(--accent);
+    font-weight: 600;
+    text-align: left;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--rule);
+    white-space: nowrap;
+  }
+  td {
+    padding: 0.5rem 0.8rem;
+    border: 1px solid var(--rule);
+    color: var(--ink);
+    vertical-align: top;
+  }
+  tr:nth-child(even) td {
+    background: var(--bg2);
+  }
+  /* --- Lists --- */
+  ul, ol {
+    padding-left: 1.5rem;
+    margin-bottom: 0.8rem;
+  }
+  li {
+    margin-bottom: 0.3rem;
+  }
+  /* --- Blockquote --- */
+  blockquote {
+    background: var(--bg2);
+    border-left: 4px solid var(--accent);
+    padding: 0.8rem 1.2rem;
+    margin-bottom: 1.5rem;
+    border-radius: 0 6px 6px 0;
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+  /* --- HR --- */
+  hr {
+    border: none;
+    border-top: 1px solid var(--rule);
+    margin: 2rem 0;
+  }
+  /* --- Badge --- */
+  .badge {
+    display: inline-block;
+    padding: 0.1em 0.5em;
+    border-radius: 3px;
+    font-size: 0.78em;
+    font-weight: 600;
+  }
+  .badge.green { background: rgba(74,222,128,0.15); color: var(--green); }
+  .badge.red { background: rgba(248,113,113,0.15); color: var(--red); }
+  /* --- Callout --- */
+  .callout {
+    background: rgba(91,155,245,0.08);
+    border: 1px solid rgba(91,155,245,0.25);
+    border-radius: 8px;
+    padding: 0.8rem 1.2rem;
+    margin-bottom: 1rem;
+  }
+  .callout strong { color: var(--accent); }
+  /* --- Flow diagram --- */
+  .flow {
+    background: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 8px;
+    padding: 1.2rem 1.5rem;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.8rem;
+    line-height: 1.8;
+    color: #c8d0e0;
+    overflow-x: auto;
+    margin-bottom: 1rem;
+  }
+  /* --- Footer --- */
+  .footer-note {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--rule);
+  }
+  strong { color: var(--ink); }
+  /* --- Responsive --- */
+  @media (max-width: 640px) {
+    .toc ol { grid-template-columns: 1fr; }
+    .container { padding: 1rem; }
+    h2 { font-size: 1.15rem; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="hero">
+  <h1>机器人3 — 记账模块（jizhang）完整规则整理</h1>
+  <p class="subtitle">基于原软件"机器人3"逆向分析 + 复刻版实现，完整梳理记账模块的所有规则</p>
+</div>
+
+<blockquote>
+  本文档基于对原软件"机器人3"（内部代号 c6802，产品名"机器人172wo"）的逆向分析，
+  结合其配置文件、数据库结构、DLL 字符串提取，以及复刻版实现，完整梳理记账模块的所有规则。
+</blockquote>
+
+<div class="toc">
+  <div class="toc-title">目录</div>
+  <ol>
+    <li><a href="#s1">配置规则</a></li>
+    <li><a href="#s2">数据库存储规则</a></li>
+    <li><a href="#s3">消息触发规则</a></li>
+    <li><a href="#s4">指令解析规则</a></li>
+    <li><a href="#s5">记录创建规则</a></li>
+    <li><a href="#s6">统计规则</a></li>
+    <li><a href="#s7">报表规则</a></li>
+    <li><a href="#s8">后端同步规则</a></li>
+    <li><a href="#s9">多实例规则</a></li>
+    <li><a href="#s10">安全加密规则</a></li>
+    <li><a href="#s11">数据隔离规则</a></li>
+    <li><a href="#s12">消息确认与去重规则</a></li>
+    <li><a href="#s13">原软件 vs 复刻版对照表</a></li>
+  </ol>
+</div>
+
+<!-- ==================== 1. 配置规则 ==================== -->
+<h2 id="s1">1. 配置规则</h2>
+
+<h3>1.1 配置文件位置</h3>
+<p>记账模块配置存储在每个实例的 <code>config.ini</code> 文件中，位于 <code>data/app/{instance_id}/config.ini</code>。</p>
+<p>原软件中存在两个实例配置：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>实例</th><th>配置路径</th><th>后端域名</th></tr>
+  <tr><td>c6801</td><td><code>data/app/c6801/config.ini</code></td><td><code>http://jacn1.huoxing111.com/6802cishi/</code></td></tr>
+  <tr><td>c6802</td><td><code>data/app/c6802/config.ini</code></td><td><code>https://jizhang105.tztz.eu.org/6802cishi/</code></td></tr>
+</table>
+</div>
+
+<h3>1.2 [jizhang] 配置段</h3>
+<pre><code>[jizhang]
+keyword=3A2F5B...（AES加密的十六进制字符串）
+domain=http://jacn1.huoxing111.com/6802cishi/</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+  <tr><td><code>keyword</code></td><td>AES加密的HEX字符串</td><td>记账功能配置数据，包含触发关键词、银行名称映射等，运行时AES解密后使用</td></tr>
+  <tr><td><code>domain</code></td><td>URL字符串</td><td>记账后端API服务器地址，每条记账记录同步到此后端</td></tr>
+  <tr><td><code>enabled</code></td><td>布尔值(0/1)</td><td>是否启用记账模块（复刻版新增，原软件通过 keyword 是否为空隐式判断）</td></tr>
+</table>
+</div>
+
+<h3>1.3 独立记账配置目录</h3>
+<p>原软件中还存在两个独立的记账模块配置目录，对应不同的记账配置实例：</p>
+<pre><code>data/app/jizhang_c1/    # 记账模块配置1
+data/app/jizhang_c12/   # 记账模块配置12</code></pre>
+<p>这两个目录的存在表明记账模块支持<strong>多套独立配置并行运行</strong>，<code>jizhang_c1</code> 和 <code>jizhang_c12</code> 可能对应不同的记账场景或不同的群组集合。</p>
+
+<h3>1.4 keyword 字段加密机制</h3>
+<ul>
+  <li><strong>加密算法</strong>: AES（对称加密）</li>
+  <li><strong>存储格式</strong>: 十六进制字符串（如 <code>3A2F5B...</code>）</li>
+  <li><strong>密钥用途</strong>: 解密后可能包含：
+    <ul>
+      <li>记账触发关键词列表</li>
+      <li>银行/渠道名称白名单</li>
+      <li>功能开关配置</li>
+      <li>数据库加密密钥（传给 wxsqlite3 的 <code>sqlite3_key()</code> 函数）</li>
+    </ul>
+  </li>
+  <li><strong>不同实例的 keyword 不同</strong>: c6801 的 keyword 较短，c6802 的 keyword 更长，表明配置内容可能有差异</li>
+</ul>
+
+<!-- ==================== 2. 数据库存储规则 ==================== -->
+<h2 id="s2">2. 数据库存储规则</h2>
+
+<h3>2.1 数据库引擎</h3>
+<ul>
+  <li><strong>引擎</strong>: SQLite + wxsqlite3</li>
+  <li><strong>加密</strong>: AES-256 加密（通过 wxsqlite3 扩展）</li>
+  <li><strong>加密函数链</strong>: <code>wxsqlite3_config</code> &rarr; <code>wxsqlite3_config_cipher</code> (配置为 AES-256) &rarr; <code>sqlite3_key()</code></li>
+  <li><strong>密钥来源</strong>: <code>config.ini</code> 中 <code>[jizhang]</code> 段的 <code>keyword</code> 字段，运行时 AES 解密后传入</li>
+</ul>
+
+<h3>2.2 数据库文件分布</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>数据库文件</th><th>加密</th><th>用途</th></tr>
+  <tr><td><code>data/data.db</code></td><td><span class="badge green">明文</span></td><td>联系人/群聊列表（表名前缀 <code>qq77193535_</code>）</td></tr>
+  <tr><td><code>data/users.db</code></td><td><span class="badge red">AES加密</span></td><td>用户账户信息</td></tr>
+  <tr><td><code>data/appdata.db</code></td><td><span class="badge red">AES加密</span></td><td>应用配置数据</td></tr>
+  <tr><td><code>data/app/c6801/data.db</code></td><td><span class="badge red">AES加密</span></td><td>实例1业务数据（含记账记录）</td></tr>
+  <tr><td><code>data/app/c6802/data.db</code></td><td><span class="badge red">AES加密</span></td><td>实例2业务数据（含记账记录）</td></tr>
+</table>
+</div>
+
+<h3>2.3 记账数据表字段</h3>
+<p>从 DLL 中提取到的 SQL 字段：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>字段名</th><th>类型</th><th>说明</th></tr>
+  <tr><td><code>bank_name</code></td><td>TEXT</td><td>银行/渠道名称（如"工商银行"、"微信"、"支付宝"）</td></tr>
+  <tr><td><code>group_id</code></td><td>INTEGER/TEXT</td><td>群组标识，用于群维度数据隔离</td></tr>
+  <tr><td><code>status</code></td><td>TEXT/INTEGER</td><td>记录状态（pending/confirmed/rejected）</td></tr>
+</table>
+</div>
+<p>复刻版扩展的完整字段：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>字段名</th><th>类型</th><th>说明</th></tr>
+  <tr><td><code>id</code></td><td>INTEGER PK</td><td>自增主键</td></tr>
+  <tr><td><code>instance_id</code></td><td>TEXT</td><td>实例ID（如 c6801）</td></tr>
+  <tr><td><code>group_wxid</code></td><td>TEXT</td><td>群wxid（如 <code>12345678@chatroom</code>）</td></tr>
+  <tr><td><code>group_name</code></td><td>TEXT</td><td>群名称</td></tr>
+  <tr><td><code>sender_wxid</code></td><td>TEXT</td><td>记账人wxid</td></tr>
+  <tr><td><code>sender_name</code></td><td>TEXT</td><td>记账人昵称</td></tr>
+  <tr><td><code>amount</code></td><td>REAL</td><td>金额（可为负数）</td></tr>
+  <tr><td><code>bank_name</code></td><td>TEXT</td><td>银行/渠道名称</td></tr>
+  <tr><td><code>remark</code> / <code>description</code></td><td>TEXT</td><td>备注说明</td></tr>
+  <tr><td><code>raw_msg</code></td><td>TEXT</td><td>原始消息内容</td></tr>
+  <tr><td><code>msg_id</code></td><td>TEXT</td><td>消息ID（用于去重）</td></tr>
+  <tr><td><code>status</code></td><td>TEXT</td><td>记录状态（pending/confirmed/rejected）</td></tr>
+  <tr><td><code>sync_status</code></td><td>INTEGER</td><td>后端同步状态（0=未同步, 1=已同步, 2=同步失败）</td></tr>
+  <tr><td><code>created_at</code></td><td>DATETIME</td><td>记账时间</td></tr>
+</table>
+</div>
+
+<h3>2.4 数据库操作 API</h3>
+<p>原软件 <code>c6802.hx.dll</code> 封装了完整的数据库操作层：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>函数</th><th>功能</th><th>记账场景用途</th></tr>
+  <tr><td><code>DB_Execute</code></td><td>执行SQL（INSERT/UPDATE/DELETE）</td><td>插入/更新记账记录</td></tr>
+  <tr><td><code>DB_Query</code></td><td>查询返回结果集</td><td>查询记账记录列表</td></tr>
+  <tr><td><code>DB_QueryFirst</code></td><td>查询首行</td><td>查询单条记账记录</td></tr>
+  <tr><td><code>DB_QueryPages</code></td><td>分页查询</td><td>分页获取记账历史</td></tr>
+  <tr><td><code>DB_QueryToUserData</code></td><td>查询映射到对象</td><td>记账记录结构化读取</td></tr>
+  <tr><td><code>DB_SaveObject</code></td><td>保存对象到数据库</td><td>保存记账记录对象</td></tr>
+  <tr><td><code>DB_GetConn</code></td><td>从连接池获取连接</td><td>多线程并发记账</td></tr>
+  <tr><td><code>DB_GetError</code></td><td>获取错误信息</td><td>记账失败诊断</td></tr>
+  <tr><td><code>BeginTransation</code></td><td>开启事务</td><td>批量记账原子操作</td></tr>
+  <tr><td><code>CommitTransation</code></td><td>提交事务</td><td>批量记账确认</td></tr>
+  <tr><td><code>BindDatabasePool</code></td><td>绑定连接池</td><td>多实例数据库隔离</td></tr>
+  <tr><td><code>BeginQueryCache</code></td><td>开启查询缓存</td><td>统计查询加速</td></tr>
+  <tr><td><code>DeleteQueryCache</code></td><td>删除查询缓存</td><td>数据更新后清缓存</td></tr>
+</table>
+</div>
+
+<h3>2.5 索引规则</h3>
+<p>复刻版中定义的索引（对应原软件的查询优化）：</p>
+<pre><code>-- 按实例+群组合索引（群维度查询加速）
+CREATE INDEX ix_bookkeeping_instance_group ON bookkeeping_records(instance_id, group_wxid);
+
+-- 按用户索引（用户维度统计加速）
+CREATE INDEX ix_bookkeeping_user ON bookkeeping_records(sender_wxid);
+
+-- 按时间索引（报表时间范围查询加速）
+CREATE INDEX ix_bookkeeping_created ON bookkeeping_records(created_at);
+
+-- 按银行索引（银行维度统计加速）
+CREATE INDEX ix_bookkeeping_bank ON bookkeeping_records(bank_name);</code></pre>
+
+<!-- ==================== 3. 消息触发规则 ==================== -->
+<h2 id="s3">3. 消息触发规则</h2>
+
+<h3>3.1 消息类型过滤</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>规则</th><th>说明</th></tr>
+  <tr><td>仅处理文本消息</td><td><code>msg_type == TEXT</code>，忽略图片/文件/语音/视频/系统消息</td></tr>
+  <tr><td>仅处理群消息</td><td><code>is_group == True</code> 且 <code>group_wxid</code> 不为空，私聊消息不触发记账</td></tr>
+  <tr><td>必须以触发关键词开头</td><td>消息正文（去除群前缀后）必须以配置的关键词起始</td></tr>
+</table>
+</div>
+
+<h3>3.2 群消息前缀处理</h3>
+<p>微信群消息格式为 <code>发送者wxid:\n消息正文</code>，记账模块需要：</p>
+<ol>
+  <li>提取实际发送者 wxid（从消息前缀）</li>
+  <li>提取消息正文（去除 <code>wxid:\n</code> 前缀后的内容）</li>
+  <li>对正文进行记账指令解析</li>
+</ol>
+
+<h3>3.3 消息去重规则</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>规则</th><th>说明</th></tr>
+  <tr><td>去重依据</td><td><code>msg_id</code>（微信消息唯一标识）</td></tr>
+  <tr><td>缓存上限</td><td>5000 条已处理消息ID</td></tr>
+  <tr><td>溢出策略</td><td>超过上限时保留最近一半（2500条），清理旧记录</td></tr>
+  <tr><td>重复处理</td><td>同一 <code>msg_id</code> 的消息第二次处理时直接返回 None，不重复记账</td></tr>
+</table>
+</div>
+
+<!-- ==================== 4. 指令解析规则 ==================== -->
+<h2 id="s4">4. 指令解析规则</h2>
+
+<h3>4.1 指令格式</h3>
+<pre><code>{触发关键词} {金额} {银行/渠道名称} [备注]</code></pre>
+<p><strong>默认触发关键词</strong>: <code>记账</code></p>
+
+<h3>4.2 正则解析规则</h3>
+<pre><code>正则: ^\s*(?P&lt;keyword&gt;[^\s]+)\s+(?P&lt;amount&gt;-?\d+(?:\.\d+)?)\s+(?P&lt;bank&gt;\S+)\s*(?P&lt;remark&gt;.*)$</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>分组</th><th>规则</th><th>示例</th></tr>
+  <tr><td><code>keyword</code></td><td>非空白字符序列，必须匹配配置的触发关键词</td><td><code>记账</code></td></tr>
+  <tr><td><code>amount</code></td><td>可选负号 + 数字 + 可选小数部分</td><td><code>100</code>, <code>-50</code>, <code>88.5</code></td></tr>
+  <tr><td><code>bank</code></td><td>非空白字符序列（不含空格）</td><td><code>工商银行</code>, <code>微信</code>, <code>支付宝</code></td></tr>
+  <tr><td><code>remark</code></td><td>剩余任意字符（可含空格，可为空）</td><td><code>工资</code>, <code>退款</code>, <code>午餐</code></td></tr>
+</table>
+</div>
+
+<h3>4.3 解析有效性判定</h3>
+<p>以下情况判定为<strong>无效指令</strong>，不触发记账：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>情况</th><th>示例</th><th>结果</th></tr>
+  <tr><td>不以触发关键词开头</td><td><code>今天天气不错</code></td><td>忽略</td></tr>
+  <tr><td>缺少银行字段</td><td><code>记账 100</code></td><td>忽略</td></tr>
+  <tr><td>金额非数字</td><td><code>记账 abc 工商银行 备注</code></td><td>忽略</td></tr>
+  <tr><td>空字符串</td><td><code></code></td><td>忽略</td></tr>
+  <tr><td>关键词后无内容</td><td><code>记账</code></td><td>忽略</td></tr>
+</table>
+</div>
+
+<h3>4.4 金额规则</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>规则</th><th>说明</th></tr>
+  <tr><td>正数</td><td>表示收入/入账（如 <code>记账 100 工商银行 工资</code>）</td></tr>
+  <tr><td>负数</td><td>表示支出/退款/扣减（如 <code>记账 -50 微信 退款</code>）</td></tr>
+  <tr><td>支持小数</td><td>如 <code>记账 88.5 支付宝 测试记录</code></td></tr>
+  <tr><td>零值</td><td>技术上允许，但业务上可能无意义</td></tr>
+</table>
+</div>
+
+<h3>4.5 银行/渠道名称规则</h3>
+<ul>
+  <li>银行名称为<strong>不含空格的连续字符串</strong></li>
+  <li>常见渠道名称（从测试数据和配置推断）：工商银行、建设银行、微信、支付宝</li>
+  <li>银行名称用于按渠道维度分组统计</li>
+  <li>原 software 的 <code>keyword</code> 加密配置中可能包含<strong>银行名称白名单</strong>（仅允许特定渠道名称）</li>
+</ul>
+
+<!-- ==================== 5. 记录创建规则 ==================== -->
+<h2 id="s5">5. 记录创建规则</h2>
+
+<h3>5.1 创建流程</h3>
+<div class="flow">群消息到达
+  &rarr; 消息类型检查（仅 TEXT）
+  &rarr; 群消息检查（仅 is_group=True）
+  &rarr; msg_id 去重检查
+  &rarr; 提取消息正文（去群前缀）
+  &rarr; 正则解析记账指令
+  &rarr; 解析失败 &rarr; 返回 None（不处理）
+  &rarr; 解析成功 &rarr; 创建 BookkeepingRecord
+  &rarr; 写入数据库（事务提交）
+  &rarr; 标记 msg_id 为已处理
+  &rarr; 发送确认消息到群
+  &rarr; 异步同步到后端API</div>
+
+<h3>5.2 记录字段填充规则</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>字段</th><th>填充来源</th></tr>
+  <tr><td><code>instance_id</code></td><td>当前实例配置</td></tr>
+  <tr><td><code>group_wxid</code></td><td>消息的 <code>group_wxid</code></td></tr>
+  <tr><td><code>group_name</code></td><td>群名缓存中查找，无则为空</td></tr>
+  <tr><td><code>sender_wxid</code></td><td>消息的 <code>sender_wxid</code></td></tr>
+  <tr><td><code>sender_name</code></td><td>消息的 <code>actual_sender_in_group</code>，无则用 wxid</td></tr>
+  <tr><td><code>amount</code></td><td>正则解析的 <code>amount</code> 转为 float</td></tr>
+  <tr><td><code>bank_name</code></td><td>正则解析的 <code>bank</code></td></tr>
+  <tr><td><code>remark</code></td><td>正则解析的 <code>remark</code></td></tr>
+  <tr><td><code>raw_msg</code></td><td>原始消息正文</td></tr>
+  <tr><td><code>msg_id</code></td><td>消息的 <code>msg_id</code></td></tr>
+  <tr><td><code>sync_status</code></td><td>初始为 0（未同步）</td></tr>
+  <tr><td><code>created_at</code></td><td>当前 UTC 时间</td></tr>
+</table>
+</div>
+
+<h3>5.3 确认消息规则</h3>
+<p>记账成功后，自动向群内发送确认消息，格式：</p>
+<pre><code>记账成功 ✓
+金额: {amount}
+渠道: {bank_name}
+备注: {remark 或 "无"}</code></pre>
+
+<h3>5.4 记录状态流转</h3>
+<div class="flow">pending（待确认）
+    &darr;
+confirmed（已确认）—— 默认状态，记账即确认
+    &darr;
+rejected（已拒绝）—— 手动驳回（原软件可能支持管理员操作）</div>
+
+<!-- ==================== 6. 统计规则 ==================== -->
+<h2 id="s6">6. 统计规则</h2>
+
+<h3>6.1 统计维度</h3>
+<p>支持三种维度的统计聚合：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>维度</th><th>分组键</th><th>用途</th></tr>
+  <tr><td><code>group</code></td><td><code>group_wxid</code></td><td>按群统计各群的记账总额</td></tr>
+  <tr><td><code>bank</code></td><td><code>bank_name</code></td><td>按银行/渠道统计各渠道流水</td></tr>
+  <tr><td><code>user</code></td><td><code>sender_wxid</code></td><td>按记账人统计个人贡献</td></tr>
+</table>
+</div>
+
+<h3>6.2 统计指标</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>指标</th><th>计算方式</th></tr>
+  <tr><td><code>count</code></td><td>记录笔数（COUNT）</td></tr>
+  <tr><td><code>total_amount</code></td><td>总净额 = 所有记录金额之和（SUM）</td></tr>
+  <tr><td><code>income</code></td><td>总收入 = 所有正数金额之和（SUM WHERE amount &gt; 0）</td></tr>
+  <tr><td><code>expense</code></td><td>总支出 = 所有负数金额之和（SUM WHERE amount &lt; 0，负值）</td></tr>
+</table>
+</div>
+
+<h3>6.3 统计查询 SQL 逻辑</h3>
+<pre><code>SELECT
+    {dimension_column} AS key,
+    COUNT(*)           AS count,
+    SUM(amount)        AS total_amount,
+    SUM(CASE WHEN amount &gt; 0 THEN amount ELSE 0 END) AS income,
+    SUM(CASE WHEN amount &lt; 0 THEN amount ELSE 0 END) AS expense
+FROM bookkeeping_records
+WHERE {可选时间范围条件}
+GROUP BY {dimension_column}</code></pre>
+
+<h3>6.4 时间范围筛选</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>参数</th><th>说明</th></tr>
+  <tr><td><code>start</code></td><td>起始时间（<code>created_at &gt;= start</code>）</td></tr>
+  <tr><td><code>end</code></td><td>结束时间（<code>created_at &lt;= end</code>）</td></tr>
+  <tr><td>无参数</td><td>统计全部记录</td></tr>
+</table>
+</div>
+
+<!-- ==================== 7. 报表规则 ==================== -->
+<h2 id="s7">7. 报表规则</h2>
+
+<h3>7.1 报表类型</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>类型</th><th>时间范围</th><th>标题</th></tr>
+  <tr><td>日报 (daily)</td><td>最近 24 小时</td><td><code>【记账日报】</code></td></tr>
+  <tr><td>周报 (weekly)</td><td>最近 7 天</td><td><code>【记账周报】</code></td></tr>
+  <tr><td>月报 (monthly)</td><td>最近 30 天</td><td><code>【记账月报】</code></td></tr>
+</table>
+</div>
+
+<h3>7.2 报表内容格式</h3>
+<pre><code>【记账{日报|周报|月报}】
+统计区间: {start.strftime('%m-%d %H:%M')} ~ {end.strftime('%m-%d %H:%M')}
+记录笔数: {count}
+总收入: {income:.2f}
+总支出: {abs(expense):.2f}
+净额: {total:.2f}
+
+按渠道:
+  {bank_name}: {amount:.2f}
+  ...（按金额绝对值降序排列）
+
+按人员:
+  {user_name}: {amount:.2f}
+  ...（按金额绝对值降序排列）</code></pre>
+
+<h3>7.3 报表排序规则</h3>
+<ul>
+  <li><strong>按渠道</strong>：按金额绝对值降序（<code>sorted(by_bank.items(), key=lambda x: -abs(x[1]))</code>）</li>
+  <li><strong>按人员</strong>：按金额绝对值降序（<code>sorted(by_user.items(), key=lambda x: -abs(x[1]))</code>）</li>
+</ul>
+
+<h3>7.4 空数据规则</h3>
+<p>当统计区间内无记账记录时，报表返回：</p>
+<pre><code>【记账{日报|周报|月报}】
+区间内无记账记录。</code></pre>
+
+<h3>7.5 群维度报表</h3>
+<p>报表支持按群筛选（<code>group_wxid</code> 参数），仅统计指定群内的记账记录；不传则统计全部群。</p>
+
+<!-- ==================== 8. 后端同步规则 ==================== -->
+<h2 id="s8">8. 后端同步规则</h2>
+
+<h3>8.1 同步架构</h3>
+<pre><code>本地记账记录 &rarr; HTTP POST &rarr; 后端API（domain配置）&rarr; 后端服务器存储/统计</code></pre>
+
+<h3>8.2 后端域名配置</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>实例</th><th>后端域名</th><th>协议</th></tr>
+  <tr><td>c6801</td><td><code>http://jacn1.huoxing111.com/6802cishi/</code></td><td>HTTP</td></tr>
+  <tr><td>c6802</td><td><code>https://jizhang105.tztz.eu.org/6802cishi/</code></td><td>HTTPS</td></tr>
+</table>
+</div>
+<ul>
+  <li>URL 路径 <code>/6802cishi/</code> 为固定后缀，<code>cishi</code> 可能意为"次世"或版本标识</li>
+  <li>c6801 使用 HTTP（不安全），c6802 使用 HTTPS（加密传输）</li>
+  <li>通信库: libcurl + OpenSSL (libeay32.dll)</li>
+</ul>
+
+<h3>8.3 同步端点</h3>
+<pre><code>POST {domain}/api/jizhang/record
+Content-Type: application/json
+Body: {记账记录JSON}</code></pre>
+
+<h3>8.4 同步触发时机</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>时机</th><th>说明</th></tr>
+  <tr><td>实时同步</td><td>每条记账记录创建后立即异步同步（<code>asyncio.create_task</code>，不阻塞主流程）</td></tr>
+  <tr><td>批量同步</td><td>手动触发 <code>sync_unsynced()</code>，批量同步所有未成功记录（单次最多 500 条）</td></tr>
+</table>
+</div>
+
+<h3>8.5 同步状态管理</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>状态码</th><th>含义</th><th>说明</th></tr>
+  <tr><td>0</td><td>未同步</td><td>初始状态，新记录默认</td></tr>
+  <tr><td>1</td><td>已同步</td><td>后端返回 HTTP 200</td></tr>
+  <tr><td>2</td><td>同步失败</td><td>后端返回非200 或网络异常</td></tr>
+</table>
+</div>
+
+<h3>8.6 同步重试规则</h3>
+<ul>
+  <li>同步失败的记录（<code>sync_status=2</code>）可通过批量同步重新尝试</li>
+  <li>批量同步查询条件: <code>WHERE sync_status != 1</code>（包含 0=未同步 和 2=失败）</li>
+  <li>单次批量最多 500 条</li>
+  <li>无自动重试定时器（需手动触发或外部调度）</li>
+</ul>
+
+<h3>8.7 同步降级规则</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>条件</th><th>行为</th></tr>
+  <tr><td><code>domain</code> 为空</td><td>跳过同步，返回 False</td></tr>
+  <tr><td><code>httpx</code> 未安装</td><td>跳过同步，记录警告日志</td></tr>
+  <tr><td>网络超时</td><td>10 秒超时，标记为同步失败（status=2）</td></tr>
+  <tr><td>后端返回非200</td><td>标记为同步失败（status=2）</td></tr>
+</table>
+</div>
+
+<!-- ==================== 9. 多实例规则 ==================== -->
+<h2 id="s9">9. 多实例规则</h2>
+
+<h3>9.1 实例隔离</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>维度</th><th>隔离方式</th></tr>
+  <tr><td>配置文件</td><td>每实例独立 <code>data/app/{instance_id}/config.ini</code></td></tr>
+  <tr><td>数据库</td><td>每实例独立 <code>data/app/{instance_id}/data.db</code>（AES加密）</td></tr>
+  <tr><td>后端服务</td><td>每实例独立 <code>domain</code> 配置，连接不同后端服务器</td></tr>
+  <tr><td>线程池</td><td>每实例 50 个工作线程（<code>thread post=50</code>）</td></tr>
+</table>
+</div>
+
+<h3>9.2 记账模块多配置</h3>
+<p>原软件中存在两套独立的记账配置目录：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>目录</th><th>可能用途</th></tr>
+  <tr><td><code>data/app/jizhang_c1/</code></td><td>记账配置实例1（可能对应 c6801 的记账规则）</td></tr>
+  <tr><td><code>data/app/jizhang_c12/</code></td><td>记账配置实例12（可能对应另一个记账场景或群组集合）</td></tr>
+</table>
+</div>
+<p>这表明记账模块支持：</p>
+<ul>
+  <li>不同实例使用不同的记账规则</li>
+  <li>同一实例可能绑定多套记账配置</li>
+  <li><code>c1</code> 和 <code>c12</code> 的编号差异暗示存在 c2~c11 等更多配置的可能性</li>
+</ul>
+
+<h3>9.3 线程模型</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>配置项</th><th>值</th><th>说明</th></tr>
+  <tr><td><code>thread post</code></td><td>50</td><td>每实例 50 个发送线程</td></tr>
+  <tr><td>线程管理函数</td><td><code>AppendThread</code> / <code>CreateThread</code> / <code>BindThreadPool</code></td><td>线程池创建和管理</td></tr>
+  <tr><td>消息队列</td><td>AMQP (RabbitMQ)</td><td>异步解耦：消息接收 &rarr; 队列 &rarr; 工作线程处理 &rarr; 队列 &rarr; 发送</td></tr>
+</table>
+</div>
+
+<h3>9.4 消息分片配置</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>配置项</th><th>值</th><th>说明</th></tr>
+  <tr><td><code>msg_split status</code></td><td>1</td><td>启用消息分片</td></tr>
+  <tr><td><code>msg 消息最多行数</code></td><td>70</td><td>单条消息最多70行，超出自动分片发送</td></tr>
+  <tr><td><code>sleep_time sec</code></td><td>1</td><td>消息发送间隔1秒</td></tr>
+</table>
+</div>
+<p>记账确认消息和报表消息如超过70行，会自动分片发送。</p>
+
+<!-- ==================== 10. 安全加密规则 ==================== -->
+<h2 id="s10">10. 安全加密规则</h2>
+
+<h3>10.1 配置加密</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>对象</th><th>加密算法</th><th>密钥管理</th></tr>
+  <tr><td><code>keyword</code> 字段</td><td>AES</td><td>十六进制存储，运行时解密</td></tr>
+  <tr><td><code>config.ini</code> 文件</td><td>无（明文GBK编码）</td><td>仅 keyword 字段内容加密</td></tr>
+</table>
+</div>
+
+<h3>10.2 数据库加密</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>对象</th><th>加密算法</th><th>密钥来源</th></tr>
+  <tr><td><code>users.db</code></td><td>AES-256 (wxsqlite3)</td><td><code>keyword</code> 解密后传入 <code>sqlite3_key()</code></td></tr>
+  <tr><td><code>appdata.db</code></td><td>AES-256 (wxsqlite3)</td><td>同上</td></tr>
+  <tr><td><code>app/c680X/data.db</code></td><td>AES-256 (wxsqlite3)</td><td>同上</td></tr>
+  <tr><td><code>data.db</code></td><td>无（明文）</td><td>不加密</td></tr>
+</table>
+</div>
+
+<h3>10.3 通信加密</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>通信链路</th><th>加密方式</th></tr>
+  <tr><td>c6801 &rarr; 后端</td><td>HTTP（明文，不安全）</td></tr>
+  <tr><td>c6802 &rarr; 后端</td><td>HTTPS（libcurl + OpenSSL）</td></tr>
+  <tr><td>E2EE 服务</td><td>e2eeE.com:8443 端到端加密</td></tr>
+  <tr><td>防重放</td><td>AntiReplay 机制</td></tr>
+</table>
+</div>
+
+<h3>10.4 完整加密算法库</h3>
+<p>原软件内置的加密算法（可能用于记账数据保护）：</p>
+<div class="table-wrap">
+<table>
+  <tr><th>算法</th><th>用途</th></tr>
+  <tr><td>AES</td><td>数据库加密、配置加密</td></tr>
+  <tr><td>RSA</td><td>非对称加密（可能用于许可证验证）</td></tr>
+  <tr><td>DES / 3DES</td><td>对称加密</td></tr>
+  <tr><td>MD5 / SHA1 / SHA256 / SHA512</td><td>哈希校验</td></tr>
+  <tr><td>HMAC</td><td>消息认证码</td></tr>
+  <tr><td>Base64</td><td>编码转换</td></tr>
+</table>
+</div>
+
+<!-- ==================== 11. 数据隔离规则 ==================== -->
+<h2 id="s11">11. 数据隔离规则</h2>
+
+<h3>11.1 群维度隔离</h3>
+<p>记账数据通过 <code>group_id</code> / <code>group_wxid</code> 实现群维度隔离：</p>
+<pre><code>-- 查询特定群的记账记录
+SELECT * FROM bookkeeping WHERE group_id = {group_id}
+
+-- 按群统计
+SELECT group_id, SUM(amount), COUNT(*) FROM bookkeeping GROUP BY group_id</code></pre>
+
+<h3>11.2 实例维度隔离</h3>
+<p>每个实例的记账数据存储在独立的加密数据库中，实例之间互不可见：</p>
+<pre><code>c6801 的记账记录 &rarr; data/app/c6801/data.db（AES加密）
+c6802 的记账记录 &rarr; data/app/c6802/data.db（AES加密）</code></pre>
+
+<h3>11.3 后端数据隔离</h3>
+<p>每个实例连接独立的后端服务器，同步的记账数据在后端也是隔离的：</p>
+<pre><code>c6801 &rarr; http://jacn1.huoxing111.com/6802cishi/   （后端服务器A）
+c6802 &rarr; https://jizhang105.tztz.eu.org/6802cishi/ （后端服务器B）</code></pre>
+
+<!-- ==================== 12. 消息确认与去重规则 ==================== -->
+<h2 id="s12">12. 消息确认与去重规则</h2>
+
+<h3>12.1 AckMessage 确认机制</h3>
+<p>原软件使用 <code>AckMessage</code> 机制确保消息可靠传输：</p>
+<ul>
+  <li>消息发送后等待 ACK 确认</li>
+  <li>未收到 ACK 的消息会重试发送</li>
+  <li>记账确认消息同样受此机制保护</li>
+</ul>
+
+<h3>12.2 去重缓存管理</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>规则</th><th>说明</th></tr>
+  <tr><td>缓存数据结构</td><td><code>set[str]</code>（msg_id 集合）</td></tr>
+  <tr><td>最大缓存数量</td><td>5000 条</td></tr>
+  <tr><td>溢出清理策略</td><td>超过5000条时，保留最近2500条，丢弃旧的2500条</td></tr>
+  <tr><td>清理时机</td><td>每次新增已处理 msg_id 后检查</td></tr>
+</table>
+</div>
+
+<h3>12.3 群名缓存</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>规则</th><th>说明</th></tr>
+  <tr><td>缓存数据结构</td><td><code>dict[str, str]</code>（group_wxid &rarr; group_name）</td></tr>
+  <tr><td>更新方式</td><td>外部调用 <code>set_group_name()</code> 手动更新</td></tr>
+  <tr><td>用途</td><td>记账记录中填充 <code>group_name</code> 字段</td></tr>
+  <tr><td>缓存未命中</td><td><code>group_name</code> 填充为空字符串</td></tr>
+</table>
+</div>
+
+<!-- ==================== 13. 对照表 ==================== -->
+<h2 id="s13">13. 原软件 vs 复刻版对照表</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>规则维度</th><th>原软件（易语言）</th><th>复刻版（Python）</th></tr>
+  <tr><td>开发语言</td><td>易语言 (E-Language)</td><td>Python 3.10+</td></tr>
+  <tr><td>数据库</td><td>SQLite + wxsqlite3 (AES-256)</td><td>SQLite + aiosqlite (无加密)</td></tr>
+  <tr><td>配置格式</td><td>INI (GBK编码)</td><td>INI (GBK兼容) + Pydantic模型</td></tr>
+  <tr><td>触发关键词</td><td>keyword 字段 AES 加密存储</td><td>明文配置，默认 "记账"</td></tr>
+  <tr><td>后端同步</td><td>libcurl + OpenSSL</td><td>httpx (asyncio)</td></tr>
+  <tr><td>消息队列</td><td>AMQP (RabbitMQ)</td><td>asyncio.Task (协程)</td></tr>
+  <tr><td>线程模型</td><td>50个工作线程</td><td>asyncio 事件循环</td></tr>
+  <tr><td>指令格式</td><td><code>记账 金额 银行 备注</code></td><td>同左（正则一致）</td></tr>
+  <tr><td>统计维度</td><td>bank_name, group_id, status</td><td>group, bank, user</td></tr>
+  <tr><td>报表类型</td><td>未确认（可能有日报）</td><td>日报/周报/月报</td></tr>
+  <tr><td>数据加密</td><td>AES-256 全链路加密</td><td>无加密（明文SQLite）</td></tr>
+  <tr><td>多实例</td><td>c6801, c6802 独立运行</td><td>支持多实例，配置隔离</td></tr>
+  <tr><td>记账配置目录</td><td>jizhang_c1, jizhang_c12</td><td>无独立目录，配置统一管理</td></tr>
+  <tr><td>确认消息</td><td>AckMessage 机制</td><td>直接发送文本</td></tr>
+  <tr><td>去重机制</td><td>不明确</td><td>msg_id 集合（5000条上限）</td></tr>
+  <tr><td>API暴露</td><td>无（内部DLL调用）</td><td>REST API + WebSocket</td></tr>
+</table>
+</div>
+
+<hr>
+
+<h2>附录：完整记账流程时序</h2>
+<div class="flow">用户在群内发送消息
+    |
+    v
+微信客户端接收消息
+    |
+    v
+weixin.dll Hook 拦截消息
+    |
+    v
+c6802.hx.dll 消息管线处理
+    |
+    +-- 消息类型检查 (TEXT?)
+    +-- 群消息检查 (is_group?)
+    +-- msg_id 去重检查
+    +-- 提取消息正文 (去群前缀)
+    |
+    v
+记账指令解析 (正则匹配)
+    |
+    +-- 解析失败 &rarr; 转交其他模块处理
+    |
+    v 解析成功
+创建 BookkeepingRecord
+    |
+    +-- 填充字段 (instance_id, group_wxid, amount, bank_name, ...)
+    +-- sync_status = 0 (未同步)
+    |
+    v
+写入数据库 (BeginTransation &rarr; INSERT &rarr; CommitTransation)
+    |
+    v
+标记 msg_id 为已处理
+    |
+    +-- 发送确认消息到群 (msg_split 分片 + sleep_time 限速)
+    |
+    v
+异步同步到后端 (asyncio.create_task)
+    |
+    +-- POST {domain}/api/jizhang/record
+    +-- 成功 &rarr; sync_status = 1
+    +-- 失败 &rarr; sync_status = 2
+    |
+    v
+流程结束</div>
+
+<div class="footer-note">
+  文档生成时间: 2026-07-15 &nbsp;|&nbsp; 基于: 机器人3 逆向分析报告 + robot3-replica 复刻版实现
+</div>
+
+</div>
+</body>
+</html>

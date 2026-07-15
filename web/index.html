@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>机器人3 · 复刻版 - 管理控制台</title>
+<style>
+/* ======================== 基础变量 (GitHub 暗色风格) ======================== */
+:root{
+  --bg:#0d1117; --bg-soft:#161b22; --bg-hover:#1c2128; --bg-inset:#010409;
+  --border:#30363d; --border-muted:#21262d;
+  --fg:#e6edf3; --fg-muted:#7d8590; --fg-subtle:#484f58;
+  --accent:#2f81f7; --accent-hover:#1f6feb; --accent-soft:rgba(56,139,253,.15);
+  --green:#3fb950; --red:#f85149; --yellow:#d29922; --purple:#a371f7;
+  --radius:8px; --shadow:0 8px 24px rgba(1,4,9,.6);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Helvetica,Arial,sans-serif;
+  background:var(--bg);color:var(--fg);font-size:14px;line-height:1.5;
+  display:flex;height:100vh;overflow:hidden;
+}
+button{font-family:inherit;cursor:pointer;border:none;outline:none}
+input,select,textarea{font-family:inherit;font-size:14px}
+a{color:var(--accent);text-decoration:none}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--fg-subtle)}
+
+/* ======================== 侧边栏 ======================== */
+.sidebar{
+  width:240px;min-width:240px;background:var(--bg-soft);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;padding:16px 0;
+}
+.brand{padding:8px 20px 18px;border-bottom:1px solid var(--border-muted)}
+.brand h1{font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px}
+.brand .logo{width:22px;height:22px;background:linear-gradient(135deg,var(--accent),var(--purple));border-radius:6px;display:inline-block}
+.brand .ver{font-size:11px;color:var(--fg-muted);margin-top:2px}
+.nav{flex:1;overflow-y:auto;padding:10px 8px}
+.nav-item{
+  display:flex;align-items:center;gap:10px;width:100%;padding:9px 12px;
+  border-radius:var(--radius);color:var(--fg-muted);font-size:14px;text-align:left;
+  background:transparent;margin-bottom:2px;transition:all .15s;
+}
+.nav-item:hover{background:var(--bg-hover);color:var(--fg)}
+.nav-item.active{background:var(--accent-soft);color:var(--accent);font-weight:500}
+.nav-item .ic{width:18px;height:18px;flex-shrink:0;opacity:.9}
+.nav-section{font-size:11px;text-transform:uppercase;color:var(--fg-subtle);padding:14px 12px 6px;letter-spacing:.5px}
+.sidebar-foot{padding:10px 16px;border-top:1px solid var(--border-muted);font-size:12px;color:var(--fg-muted)}
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--fg-subtle);margin-right:6px}
+.status-dot.online{background:var(--green);box-shadow:0 0 6px var(--green)}
+.status-dot.offline{background:var(--red)}
+
+/* ======================== 主内容 ======================== */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.topbar{
+  height:52px;min-height:52px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--bg);
+}
+.topbar .crumb{font-size:15px;font-weight:600}
+.topbar .right{display:flex;align-items:center;gap:14px;font-size:12px;color:var(--fg-muted)}
+.content{flex:1;overflow-y:auto;padding:24px}
+
+/* ======================== 卡片 / 通用 ======================== */
+.card{background:var(--bg-soft);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:16px}
+.card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.card-head h3{font-size:14px;font-weight:600}
+.grid{display:grid;gap:16px}
+.stat-grid{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.stat{background:var(--bg-soft);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.stat .label{color:var(--fg-muted);font-size:12px;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.stat .value{font-size:26px;font-weight:700}
+.stat .sub{font-size:12px;color:var(--fg-subtle);margin-top:4px}
+.stat .ic-circle{width:32px;height:32px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:16px;margin-bottom:10px}
+
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:6px;font-size:13px;font-weight:500;background:var(--bg-hover);color:var(--fg);border:1px solid var(--border);transition:all .15s}
+.btn:hover{background:var(--border)}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn.primary:hover{background:var(--accent-hover)}
+.btn.danger{background:rgba(248,81,73,.12);color:var(--red);border-color:rgba(248,81,73,.3)}
+.btn.danger:hover{background:rgba(248,81,73,.22)}
+.btn.success{background:rgba(63,185,80,.14);color:var(--green);border-color:rgba(63,185,80,.3)}
+.btn.sm{padding:4px 10px;font-size:12px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+.input,.select,.textarea{width:100%;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--fg);outline:none;transition:border .15s}
+.input:focus,.select:focus,.textarea:focus{border-color:var(--accent)}
+.textarea{resize:vertical;min-height:80px;font-family:inherit}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:12px;color:var(--fg-muted);margin-bottom:6px}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.spacer{flex:1}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border-muted)}
+th{color:var(--fg-muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.4px}
+tr:hover td{background:var(--bg-hover)}
+.tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500}
+.tag.running{background:rgba(63,185,80,.15);color:var(--green)}
+.tag.stopped{background:rgba(125,133,144,.15);color:var(--fg-muted)}
+.tag.error{background:rgba(248,81,73,.15);color:var(--red)}
+.tag.in{background:rgba(56,139,253,.15);color:var(--accent)}
+.tag.out{background:rgba(163,113,247,.15);color:var(--purple)}
+.tag.income{background:rgba(63,185,80,.15);color:var(--green)}
+.tag.expense{background:rgba(248,81,73,.15);color:var(--red)}
+
+.msg-stream{max-height:520px;overflow-y:auto;display:flex;flex-direction:column-reverse;gap:8px}
+.msg-item{padding:10px 12px;background:var(--bg-inset);border:1px solid var(--border-muted);border-radius:8px;font-size:13px}
+.msg-item .meta{display:flex;justify-content:space-between;margin-bottom:4px;font-size:11px;color:var(--fg-muted)}
+.msg-item .body{word-break:break-all}
+.empty{text-align:center;padding:40px;color:var(--fg-subtle);font-size:13px}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--bg-soft);border:1px solid var(--border);border-radius:8px;padding:12px 18px;box-shadow:var(--shadow);z-index:9999;font-size:13px;opacity:0;transform:translateY(10px);transition:all .25s}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.ok{border-color:rgba(63,185,80,.4)}
+.toast.err{border-color:rgba(248,81,73,.4)}
+.bar{height:8px;border-radius:4px;background:var(--bg-inset);overflow:hidden}
+.bar > i{display:block;height:100%}
+.modal-bg{position:fixed;inset:0;background:rgba(1,4,9,.7);display:none;align-items:center;justify-content:center;z-index:1000}
+.modal-bg.show{display:flex}
+.modal{background:var(--bg-soft);border:1px solid var(--border);border-radius:12px;width:520px;max-width:92vw;max-height:86vh;overflow:auto;box-shadow:var(--shadow)}
+.modal-head{padding:16px 20px;border-bottom:1px solid var(--border-muted);display:flex;justify-content:space-between;align-items:center}
+.modal-head h3{font-size:15px}
+.modal-body{padding:20px}
+.modal-foot{padding:14px 20px;border-top:1px solid var(--border-muted);display:flex;justify-content:flex-end;gap:10px}
+.switch{position:relative;width:38px;height:22px;display:inline-block}
+.switch input{opacity:0;width:0;height:0}
+.switch .slider{position:absolute;inset:0;background:var(--border);border-radius:22px;transition:.2s}
+.switch .slider:before{content:"";position:absolute;height:16px;width:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+.switch input:checked + .slider{background:var(--accent)}
+.switch input:checked + .slider:before{transform:translateX(16px)}
+.hide{display:none!important}
+@media(max-width:760px){.sidebar{width:64px;min-width:64px}.brand h1 span,.brand .ver,.nav-item span,.sidebar-foot div{display:none}.nav-item{justify-content:center}}
+</style>
+</head>
+<body>
+
+<!-- ======================== 侧边栏 ======================== -->
+<aside class="sidebar">
+  <div class="brand">
+    <h1><span class="logo"></span><span>机器人3 · 复刻版</span></h1>
+    <div class="ver">v1.0.0 · 微信自动化</div>
+  </div>
+  <nav class="nav" id="nav">
+    <div class="nav-section">总览</div>
+    <button class="nav-item active" data-page="dashboard"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h5v5H2zm7 0h5v8H9zM2 9h5v5H2zm7 0h5v5H9z"/></svg><span>仪表盘</span></button>
+    <div class="nav-section">管理</div>
+    <button class="nav-item" data-page="instance"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3.25a2 2 0 012-2h9a2 2 0 012 2v9.5a2 2 0 01-2 2h-9a2 2 0 01-2-2zM8 9a2 2 0 100-4 2 2 0 000 4z"/></svg><span>实例管理</span></button>
+    <button class="nav-item" data-page="message"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M1.75 1h12.5c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0114.25 13H8.06l-2.573 2.573A.25.25 0 015 15.393V13H1.75A1.75 1.75 0 010 11.25v-8.5C0 1.784.784 1 1.75 1z"/></svg><span>消息记录</span></button>
+    <button class="nav-item" data-page="contact"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 3.5a2 2 0 11-4 0 2 2 0 014 0zM3 7a3 3 0 00-3 3 1 1 0 001 1h4a1 1 0 001-1 3 3 0 00-3-3zm10.5-3.5a2 2 0 11-4 0 2 2 0 014 0zM11 7a3 3 0 00-3 3 1 1 0 001 1h4a1 1 0 001-1 3 3 0 00-3-3z"/></svg><span>联系人</span></button>
+    <button class="nav-item" data-page="group"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 1.75a2.25 2.25 0 014.5 0V4h1a2 2 0 012 2v2.5a2.25 2.25 0 11-4.5 0V8H6v.75a2.25 2.25 0 11-4.5 0V6a2 2 0 012-2h1z"/></svg><span>群管理</span></button>
+    <button class="nav-item" data-page="bookkeeping"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2.75C2 1.784 2.784 1 3.75 1h8.5c.966 0 1.75.784 1.75 1.75v11.5a.75.75 0 01-1.184.612L8 12.5l-4.816 2.362A.75.75 0 012 14.25z"/></svg><span>记账</span></button>
+    <div class="nav-section">系统</div>
+    <button class="nav-item" data-page="settings"><svg class="ic" viewBox="0 0 16 16" fill="currentColor"><path d="M8 4.754a3.246 3.246 0 100 6.492 3.246 3.246 0 000-6.492zM5.754 8a2.246 2.246 0 114.492 0 2.246 2.246 0 01-4.492 0z"/><path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 01-1.255.52l-.292-.16c-1.64-.902-3.433.902-2.54 2.541l.159.292a.873.873 0 01-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 01.52 1.255l-.16.292c-.902 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 011.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 011.255-.52l.292.16c1.64.903 3.434-.901 2.54-2.541l-.159-.292a.873.873 0 01.52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 01-.52-1.255l.16-.292c.903-1.64-.901-3.433-2.541-2.54l-.292.159a.873.873 0 01-1.255-.52z"/></svg><span>设置</span></button>
+  </nav>
+  <div class="sidebar-foot">
+    <div><span class="status-dot" id="sysStatus"></span>系统状态</div>
+    <div style="margin-top:6px" id="licenseTag">许可证: --</div>
+  </div>
+</aside>
+
+<!-- ======================== 主区域 ======================== -->
+<main class="main">
+  <header class="topbar">
+    <div class="crumb" id="crumb">仪表盘</div>
+    <div class="right">
+      <span id="wsTag"><span class="status-dot offline"></span>WS: 未连接</span>
+      <span id="instSelWrap" class="hide">实例: <select id="instSel" class="select" style="width:160px;height:30px"></select></span>
+      <button class="btn sm" onclick="refresh()">刷新</button>
+    </div>
+  </header>
+  <div class="content">
+
+    <!-- 仪表盘 -->
+    <section id="page-dashboard">
+      <div class="grid stat-grid" id="dashStats"></div>
+      <div class="grid" style="grid-template-columns:2fr 1fr;margin-top:4px">
+        <div class="card">
+          <div class="card-head"><h3>实例概览</h3><button class="btn sm" onclick="loadDashboard()">刷新</button></div>
+          <div id="dashInstances"><div class="empty">加载中...</div></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>最近消息</h3></div>
+          <div id="dashMessages" style="max-height:340px;overflow-y:auto"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 实例管理 -->
+    <section id="page-instance" class="hide">
+      <div class="card">
+        <div class="card-head">
+          <h3>实例列表</h3>
+          <button class="btn primary sm" onclick="openCreateInstance()">+ 创建实例</button>
+        </div>
+        <div id="instanceList"><div class="empty">加载中...</div></div>
+      </div>
+    </section>
+
+    <!-- 消息记录 -->
+    <section id="page-message" class="hide">
+      <div class="grid" style="grid-template-columns:1fr 1fr">
+        <div class="card">
+          <div class="card-head"><h3>发送消息</h3></div>
+          <div class="field"><label>实例ID</label><input id="msgInst" class="input" placeholder="如 c6801"></div>
+          <div class="field"><label>目标微信ID</label><input id="msgWxid" class="input" placeholder="wxid_ 或 群ID"></div>
+          <div class="field"><label>消息内容</label><textarea id="msgText" class="textarea" placeholder="输入文本消息..."></textarea></div>
+          <button class="btn primary" onclick="sendText()">发送</button>
+          <span id="msgSendTip" style="margin-left:10px;font-size:12px;color:var(--fg-muted)"></span>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <h3>实时消息流</h3>
+            <span id="wsCount" style="font-size:12px;color:var(--fg-muted)"></span>
+          </div>
+          <div class="msg-stream" id="msgStream"><div class="empty">等待连接 WebSocket...</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>消息历史查询</h3><button class="btn sm" onclick="loadHistory()">查询</button></div>
+        <div class="row" style="margin-bottom:14px">
+          <input id="histInst" class="input" placeholder="实例ID" style="max-width:160px">
+          <input id="histWxid" class="input" placeholder="对方微信ID" style="max-width:200px">
+          <input id="histLimit" class="input" type="number" value="50" style="max-width:90px">
+        </div>
+        <div id="histTable"><div class="empty">输入条件后查询</div></div>
+      </div>
+    </section>
+
+    <!-- 联系人 -->
+    <section id="page-contact" class="hide">
+      <div class="card">
+        <div class="card-head">
+          <h3>联系人</h3>
+          <div class="row">
+            <input id="contactInst" class="input" placeholder="实例ID" style="max-width:150px">
+            <input id="contactKw" class="input" placeholder="搜索 wxid/昵称/备注" style="max-width:220px">
+            <button class="btn sm" onclick="searchContacts()">搜索</button>
+            <button class="btn sm" onclick="loadContacts()">全部</button>
+            <button class="btn success sm" onclick="syncContacts()">同步</button>
+          </div>
+        </div>
+        <div id="contactList"><div class="empty">加载中...</div></div>
+      </div>
+    </section>
+
+    <!-- 群管理 -->
+    <section id="page-group" class="hide">
+      <div class="grid" style="grid-template-columns:1fr 2fr">
+        <div class="card">
+          <div class="card-head"><h3>群列表</h3></div>
+          <div class="field"><input id="groupInst" class="input" placeholder="实例ID" oninput="loadGroups()"></div>
+          <div id="groupList"><div class="empty">输入实例ID后加载</div></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>群详情 / 统计</h3></div>
+          <div id="groupDetail"><div class="empty">从左侧选择群查看详情</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 记账 -->
+    <section id="page-bookkeeping" class="hide">
+      <div class="grid stat-grid" id="bkStats"><div class="empty">选择实例查看统计</div></div>
+      <div class="card" style="margin-top:4px">
+        <div class="card-head">
+          <h3>记账记录</h3>
+          <div class="row">
+            <input id="bkInst" class="input" placeholder="实例ID" style="max-width:160px" oninput="loadBookkeeping()">
+            <button class="btn sm" onclick="loadBookkeeping()">刷新</button>
+          </div>
+        </div>
+        <div id="bkChart" style="margin-bottom:16px"></div>
+        <div id="bkTable"><div class="empty">输入实例ID后加载</div></div>
+      </div>
+    </section>
+
+    <!-- 设置 -->
+    <section id="page-settings" class="hide">
+      <div class="grid" style="grid-template-columns:1fr 1fr">
+        <div class="card">
+          <div class="card-head"><h3>全局配置</h3></div>
+          <div class="field"><label>API 地址</label><input class="input" id="cfgApi" disabled></div>
+          <div class="field"><label>微信版本</label><input class="input" id="cfgWxVer" disabled></div>
+          <div class="field"><label>后端地址</label><input class="input" id="cfgBackend" disabled></div>
+          <div class="field"><label>最大消息行数</label><input class="input" id="cfgMaxLines" type="number" disabled></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>安全设置</h3></div>
+          <div class="field"><label>许可证ID</label><input class="input" id="cfgLicense" disabled></div>
+          <div class="field" style="display:flex;align-items:center;justify-content:space-between">
+            <label style="margin:0">IP 白名单启用</label>
+            <label class="switch"><input type="checkbox" id="cfgIpWhite" disabled><span class="slider"></span></label>
+          </div>
+          <div class="field"><label>防火墙状态</label><div id="fwStatus" style="font-size:13px;color:var(--fg-muted)">--</div></div>
+          <div class="card-head" style="margin-top:8px"><h3 style="font-size:13px">系统信息</h3></div>
+          <div id="sysInfo" style="font-size:13px;color:var(--fg-muted);line-height:1.8"></div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<!-- 创建实例弹窗 -->
+<div class="modal-bg" id="modalCreate">
+  <div class="modal">
+    <div class="modal-head"><h3>创建实例</h3><button class="btn sm" onclick="closeModal('modalCreate')">×</button></div>
+    <div class="modal-body">
+      <div class="field"><label>实例ID</label><input id="newId" class="input" placeholder="如 c6801"></div>
+      <div class="field"><label>显示名称</label><input id="newName" class="input" placeholder="可选"></div>
+      <div class="field"><label>微信ID (wxid)</label><input id="newWxid" class="input" placeholder="可选"></div>
+      <div class="field-row">
+        <div class="field"><label>最大消息行数</label><input id="newMaxLines" class="input" type="number" value="70"></div>
+        <div class="field"><label>发送间隔(秒)</label><input id="newSleep" class="input" type="number" step="0.1" value="1.0"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('modalCreate')">取消</button>
+      <button class="btn primary" onclick="doCreateInstance()">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- 编辑配置弹窗 -->
+<div class="modal-bg" id="modalConfig">
+  <div class="modal">
+    <div class="modal-head"><h3>编辑实例配置</h3><button class="btn sm" onclick="closeModal('modalConfig')">×</button></div>
+    <div class="modal-body">
+      <input id="cfgEditId" type="hidden">
+      <div class="field"><label>显示名称</label><input id="cfgEditName" class="input"></div>
+      <div class="field"><label>微信ID (wxid)</label><input id="cfgEditWxid" class="input"></div>
+      <div class="field-row">
+        <div class="field"><label>最大消息行数</label><input id="cfgEditMaxLines" class="input" type="number"></div>
+        <div class="field"><label>发送间隔(秒)</label><input id="cfgEditSleep" class="input" type="number" step="0.1"></div>
+      </div>
+      <div class="field"><label>记账域名</label><input id="cfgEditDomain" class="input"></div>
+      <div class="field" style="display:flex;align-items:center;justify-content:space-between">
+        <label style="margin:0">长消息分片</label>
+        <label class="switch"><input type="checkbox" id="cfgEditSplit"><span class="slider"></span></label>
+      </div>
+      <div class="field" style="display:flex;align-items:center;justify-content:space-between">
+        <label style="margin:0">记账模块</label>
+        <label class="switch"><input type="checkbox" id="cfgEditJz"><span class="slider"></span></label>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('modalConfig')">取消</button>
+      <button class="btn primary" onclick="saveConfig()">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ======================== 全局状态 ======================== */
+const API = '';  // 同源
+let ws = null;
+let currentInstance = '';
+const PAGE_TITLES = {dashboard:'仪表盘',instance:'实例管理',message:'消息记录',contact:'联系人',group:'群管理',bookkeeping:'记账',settings:'设置'};
+
+/* ======================== 工具函数 ======================== */
+async function api(path, opts={}){
+  opts.headers = Object.assign({'Content-Type':'application/json'}, opts.headers||{});
+  const res = await fetch(API+path, opts);
+  return res.json().catch(()=>({success:false,error:'响应解析失败'}));
+}
+function toast(msg, ok=true){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast show ' + (ok?'ok':'err');
+  clearTimeout(t._t); t._t = setTimeout(()=>t.className='toast',2500);
+}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function timeFmt(t){
+  if(!t) return '-';
+  const d = new Date(t*1000);
+  return d.toLocaleString('zh-CN',{hour12:false});
+}
+function closeModal(id){ document.getElementById(id).classList.remove('show'); }
+
+/* ======================== 导航 ======================== */
+document.getElementById('nav').addEventListener('click', e=>{
+  const btn = e.target.closest('.nav-item'); if(!btn) return;
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const page = btn.dataset.page;
+  document.querySelectorAll('main section').forEach(s=>s.classList.add('hide'));
+  document.getElementById('page-'+page).classList.remove('hide');
+  document.getElementById('crumb').textContent = PAGE_TITLES[page];
+  if(page==='dashboard') loadDashboard();
+  if(page==='instance') loadInstances();
+  if(page==='message'){ connectWs(); loadReceived(); }
+  if(page==='contact') loadContacts();
+  if(page==='settings') loadSettings();
+});
+
+function refresh(){
+  const active = document.querySelector('.nav-item.active').dataset.page;
+  if(active==='dashboard') loadDashboard();
+  if(active==='instance') loadInstances();
+  if(active==='message') loadReceived();
+  if(active==='contact') loadContacts();
+}
+
+/* ======================== 仪表盘 ======================== */
+async function loadDashboard(){
+  const d = await api('/api/dashboard');
+  if(!d || !d.success && d.instance_total===undefined){ document.getElementById('dashStats').innerHTML='<div class="empty">加载失败</div>'; return; }
+  const mockBadge = d.mock_mode ? '<span class="tag in">Mock</span>' : '<span class="tag running">真实</span>';
+  const licBadge = d.license_status ? '<span class="tag running">有效</span>' : '<span class="tag error">无效</span>';
+  document.getElementById('dashStats').innerHTML = `
+    <div class="stat"><div class="ic-circle" style="background:rgba(56,139,253,.15);color:#2f81f7">⚙</div>
+      <div class="label">运行实例</div><div class="value">${d.instance_running}<span style="font-size:14px;color:var(--fg-muted)"> / ${d.instance_total}</span></div></div>
+    <div class="stat"><div class="ic-circle" style="background:rgba(63,185,80,.15);color:#3fb950">✉</div>
+      <div class="label">今日消息</div><div class="value">${d.today_messages}</div></div>
+    <div class="stat"><div class="ic-circle" style="background:rgba(163,113,247,.15);color:#a371f7">●</div>
+      <div class="label">WS 连接数</div><div class="value">${d.ws_connections}</div></div>
+    <div class="stat"><div class="ic-circle" style="background:rgba(210,153,34,.15);color:#d29922">🔒</div>
+      <div class="label">运行模式 / 许可证</div><div class="value" style="font-size:18px">${mockBadge} ${licBadge}</div></div>
+  `;
+  // 实例概览
+  const insts = await api('/api/instance/list');
+  const data = insts.data||[];
+  document.getElementById('dashInstances').innerHTML = data.length? `
+    <table><thead><tr><th>实例ID</th><th>名称</th><th>状态</th><th>操作</th></tr></thead><tbody>
+    ${data.map(i=>`<tr><td>${esc(i.instance_id)}</td><td>${esc(i.display_name)}</td>
+      <td><span class="tag ${i.status}">${i.status}</span></td>
+      <td>${i.status==='running'
+        ?`<button class="btn danger sm" onclick="stopInst('${i.instance_id}')">停止</button>`
+        :`<button class="btn success sm" onclick="startInst('${i.instance_id}')">启动</button>`}</td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">暂无实例, 请前往实例管理创建</div>';
+  // 最近消息
+  const msgs = await api('/api/message/received?limit=8');
+  document.getElementById('dashMessages').innerHTML = (msgs.data||[]).length? `
+    ${msgs.data.map(m=>`<div class="msg-item" style="margin-bottom:8px">
+      <div class="meta"><span><span class="tag ${m.direction}">${m.direction==='in'?'收':'发'}</span> ${esc(m.wxid)}</span><span>${timeFmt(m.created_at)}</span></div>
+      <div class="body">${esc(m.content)}</div></div>`).join('')}` : '<div class="empty">暂无消息</div>';
+}
+
+/* ======================== 实例管理 ======================== */
+async function loadInstances(){
+  const res = await api('/api/instance/list');
+  const data = res.data||[];
+  document.getElementById('instanceList').innerHTML = data.length? `
+    <table><thead><tr><th>实例ID</th><th>显示名称</th><th>微信ID</th><th>状态</th><th>启动时间</th><th>操作</th></tr></thead><tbody>
+    ${data.map(i=>`<tr><td><b>${esc(i.instance_id)}</b></td><td>${esc(i.display_name)}</td><td>${esc(i.wxid||'-')}</td>
+      <td><span class="tag ${i.status}">${i.status}</span></td><td>${timeFmt(i.started_at)}</td>
+      <td><div class="row">
+        ${i.status==='running'
+          ?`<button class="btn danger sm" onclick="stopInst('${i.instance_id}')">停止</button>`
+          :`<button class="btn success sm" onclick="startInst('${i.instance_id}')">启动</button>`}
+        <button class="btn sm" onclick="editConfig('${i.instance_id}')">配置</button>
+      </div></td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">暂无实例, 点击右上角创建</div>';
+}
+function openCreateInstance(){ ['newId','newName','newWxid'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('newMaxLines').value=70; document.getElementById('newSleep').value=1.0;
+  document.getElementById('modalCreate').classList.add('show'); }
+async function doCreateInstance(){
+  const body = {instance_id:document.getElementById('newId').value.trim(), display_name:document.getElementById('newName').value,
+    wxid:document.getElementById('newWxid').value,
+    config:{msg_max_lines:+document.getElementById('newMaxLines').value, msg_sleep_sec:+document.getElementById('newSleep').value}};
+  if(!body.instance_id){ toast('请输入实例ID', false); return; }
+  const r = await api('/api/instance/create',{method:'POST',body:JSON.stringify(body)});
+  if(r.success){ toast('实例创建成功'); closeModal('modalCreate'); loadInstances(); }
+  else toast('创建失败: '+(r.error||'未知错误'), false);
+}
+async function startInst(id){ const r=await api(`/api/instance/${id}/start`,{method:'POST'}); toast(r.success?'实例已启动':('启动失败: '+r.error), r.success); loadInstances(); }
+async function stopInst(id){ const r=await api(`/api/instance/${id}/stop`,{method:'POST'}); toast(r.success?'实例已停止':('停止失败: '+r.error), r.success); loadInstances(); }
+async function editConfig(id){
+  const r = await api(`/api/instance/${id}/status`);
+  const d = r.data||{}; const cfg = d.config||{};
+  document.getElementById('cfgEditId').value=id;
+  document.getElementById('cfgEditName').value=d.display_name||cfg.display_name||'';
+  document.getElementById('cfgEditWxid').value=d.wxid||cfg.wxid||'';
+  document.getElementById('cfgEditMaxLines').value=cfg.msg_max_lines||70;
+  document.getElementById('cfgEditSleep').value=cfg.msg_sleep_sec||1.0;
+  document.getElementById('cfgEditDomain').value=cfg.jizhang_domain||'';
+  document.getElementById('cfgEditSplit').checked=cfg.msg_split_enabled!==false;
+  document.getElementById('cfgEditJz').checked=cfg.jizhang_enabled!==false;
+  document.getElementById('modalConfig').classList.add('show');
+}
+async function saveConfig(){
+  const id=document.getElementById('cfgEditId').value;
+  const body={config:{
+    display_name:document.getElementById('cfgEditName').value,
+    wxid:document.getElementById('cfgEditWxid').value,
+    msg_max_lines:+document.getElementById('cfgEditMaxLines').value,
+    msg_sleep_sec:+document.getElementById('cfgEditSleep').value,
+    jizhang_domain:document.getElementById('cfgEditDomain').value,
+    msg_split_enabled:document.getElementById('cfgEditSplit').checked,
+    jizhang_enabled:document.getElementById('cfgEditJz').checked}};
+  const r=await api(`/api/instance/${id}/config`,{method:'PUT',body:JSON.stringify(body)});
+  if(r.success){ toast('配置已保存'); closeModal('modalConfig'); loadInstances(); }
+  else toast('保存失败: '+(r.error||''), false);
+}
+
+/* ======================== 消息 ======================== */
+function connectWs(){
+  if(ws && ws.readyState<=1) return;
+  const proto = location.protocol==='https:'?'wss':'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onopen = ()=>{ document.getElementById('wsTag').innerHTML='<span class="status-dot online"></span>WS: 已连接'; };
+  ws.onclose = ()=>{ document.getElementById('wsTag').innerHTML='<span class="status-dot offline"></span>WS: 未连接'; setTimeout(()=>{if(document.getElementById('page-message')&&!document.getElementById('page-message').classList.contains('hide'))connectWs();},3000); };
+  ws.onerror = ()=>{};
+  ws.onmessage = (e)=>{
+    try{ const m=JSON.parse(e.data); appendMsg(m.data||m); }catch(err){}
+  };
+}
+function appendMsg(m){
+  if(!m) return;
+  const el = document.getElementById('msgStream');
+  if(el.querySelector('.empty')) el.innerHTML='';
+  const item = document.createElement('div');
+  item.className='msg-item';
+  item.innerHTML = `<div class="meta"><span><span class="tag ${m.direction||'in'}">${m.direction==='out'?'发':'收'}</span> ${esc(m.instance_id||'')} · ${esc(m.wxid||'')}</span><span>${timeFmt(m.created_at||Date.now()/1000)}</span></div><div class="body">${esc(m.content||'')}</div>`;
+  el.prepend(item);
+  while(el.children.length>200) el.removeChild(el.lastChild);
+  document.getElementById('wsCount').textContent = el.children.length+' 条';
+}
+async function sendText(){
+  const body={instance_id:document.getElementById('msgInst').value.trim(), wxid:document.getElementById('msgWxid').value.trim(), text:document.getElementById('msgText').value};
+  if(!body.instance_id||!body.wxid||!body.text){ toast('请填写完整', false); return; }
+  const r=await api('/api/message/send-text',{method:'POST',body:JSON.stringify(body)});
+  document.getElementById('msgSendTip').textContent = r.success?'已发送':'发送失败';
+  if(r.success){ document.getElementById('msgText').value=''; loadReceived(); }
+  else toast(r.error||'发送失败', false);
+}
+async function loadReceived(){
+  const r=await api('/api/message/received?limit=50');
+  const el=document.getElementById('msgStream'); el.innerHTML='';
+  (r.data||[]).forEach(m=>appendMsg(m));
+  if(!el.children.length) el.innerHTML='<div class="empty">暂无消息</div>';
+}
+async function loadHistory(){
+  const inst=document.getElementById('histInst').value.trim();
+  const wxid=document.getElementById('histWxid').value.trim();
+  const limit=document.getElementById('histLimit').value||50;
+  if(!inst||!wxid){ toast('请填写实例ID和微信ID', false); return; }
+  const r=await api(`/api/message/history?instance_id=${encodeURIComponent(inst)}&wxid=${encodeURIComponent(wxid)}&limit=${limit}`);
+  const data=r.data||[];
+  document.getElementById('histTable').innerHTML = data.length? `
+    <table><thead><tr><th>方向</th><th>类型</th><th>内容</th><th>时间</th></tr></thead><tbody>
+    ${data.map(m=>`<tr><td><span class="tag ${m.direction}">${m.direction==='in'?'收':'发'}</span></td><td>${esc(m.msg_type)}</td><td>${esc(m.content)}</td><td>${timeFmt(m.created_at)}</td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">无记录</div>';
+}
+
+/* ======================== 联系人 ======================== */
+async function loadContacts(){
+  const inst=document.getElementById('contactInst').value.trim();
+  if(!inst){ document.getElementById('contactList').innerHTML='<div class="empty">请输入实例ID</div>'; return; }
+  const r=await api(`/api/contact/list?instance_id=${encodeURIComponent(inst)}&limit=500`);
+  renderContacts(r.data||[]);
+}
+async function searchContacts(){
+  const inst=document.getElementById('contactInst').value.trim();
+  const kw=document.getElementById('contactKw').value.trim();
+  if(!inst||!kw){ toast('请填写实例ID和关键词', false); return; }
+  const r=await api(`/api/contact/search?instance_id=${encodeURIComponent(inst)}&keyword=${encodeURIComponent(kw)}`);
+  renderContacts(r.data||[]);
+}
+function renderContacts(data){
+  document.getElementById('contactList').innerHTML = data.length? `
+    <table><thead><tr><th>微信ID</th><th>昵称</th><th>备注</th><th>更新时间</th><th>操作</th></tr></thead><tbody>
+    ${data.map(c=>`<tr><td>${esc(c.wxid)}</td><td>${esc(c.nickname)}</td><td id="rmk-${esc(c.wxid)}">${esc(c.remark||'')}</td><td>${timeFmt(c.updated_at)}</td>
+      <td><button class="btn sm" onclick="editRemark('${esc(c.instance_id)}','${esc(c.wxid)}','${esc(c.remark||'')}')">改备注</button></td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">无联系人</div>';
+}
+function editRemark(inst,wxid,remark){
+  const v=prompt('修改备注:',remark);
+  if(v===null) return;
+  api('/api/contact/remark',{method:'PUT',body:JSON.stringify({instance_id:inst,wxid:wxid,remark:v})}).then(r=>{
+    toast(r.success?'备注已更新':'更新失败', r.success); loadContacts();
+  });
+}
+async function syncContacts(){
+  const inst=document.getElementById('contactInst').value.trim();
+  if(!inst){ toast('请输入实例ID', false); return; }
+  const r=await api('/api/contact/sync',{method:'POST',body:JSON.stringify({instance_id:inst})});
+  toast(r.success?'同步完成':'同步失败', r.success); if(r.success) loadContacts();
+}
+
+/* ======================== 群管理 ======================== */
+async function loadGroups(){
+  const inst=document.getElementById('groupInst').value.trim();
+  if(!inst){ document.getElementById('groupList').innerHTML='<div class="empty">请输入实例ID</div>'; return; }
+  const r=await api(`/api/group/list?instance_id=${encodeURIComponent(inst)}`);
+  const data=r.data||[];
+  document.getElementById('groupList').innerHTML = data.length? data.map(g=>`
+    <div class="msg-item" style="cursor:pointer;margin-bottom:8px" onclick="loadGroupDetail('${esc(inst)}','${esc(g.group_wxid)}')">
+      <div style="font-weight:600">${esc(g.name||g.group_wxid)}</div>
+      <div style="font-size:12px;color:var(--fg-muted)">${esc(g.group_wxid)} · ${g.member_count||0}人</div></div>`).join('') : '<div class="empty">无群</div>';
+}
+async function loadGroupDetail(inst,gid){
+  const r=await api(`/api/group/${encodeURIComponent(gid)}/stats?instance_id=${encodeURIComponent(inst)}`);
+  const d=(r.data||{}); const members=d.members||[]; const g=d.group||{};
+  document.getElementById('groupDetail').innerHTML = `
+    <div class="card" style="border:0;padding:0;margin-bottom:16px">
+      <div class="card-head"><h3>${esc(g.name||gid)}</h3><span class="tag running">${d.member_count||0} 成员</span></div>
+      <div style="font-size:13px;color:var(--fg-muted);margin-bottom:12px">群ID: ${esc(gid)} · 群主: ${esc(g.owner||'-')}</div>
+      ${g.announcement?`<div class="msg-item" style="margin-bottom:12px"><div class="meta"><span>📢 群公告</span></div><div class="body">${esc(g.announcement)}</div></div>`:''}
+      <div class="row" style="margin-bottom:12px"><input id="annText" class="input" placeholder="输入群公告"><button class="btn primary sm" onclick="sendAnn('${esc(inst)}','${esc(gid)}')">发布公告</button></div>
+    </div>
+    <table><thead><tr><th>成员ID</th><th>昵称</th><th>群昵称</th></tr></thead><tbody>
+    ${members.map(m=>`<tr><td>${esc(m.wxid)}</td><td>${esc(m.nickname)}</td><td>${esc(m.display_name)}</td></tr>`).join('')}
+    </tbody></table>`;
+}
+async function sendAnn(inst,gid){
+  const txt=document.getElementById('annText').value;
+  if(!txt){ toast('请输入公告', false); return; }
+  const r=await api('/api/group/send-announcement',{method:'POST',body:JSON.stringify({instance_id:inst,group_wxid:gid,announcement:txt})});
+  toast(r.success?'公告已发送':'发送失败', r.success); if(r.success) loadGroupDetail(inst,gid);
+}
+
+/* ======================== 记账 ======================== */
+async function loadBookkeeping(){
+  const inst=document.getElementById('bkInst').value.trim();
+  if(!inst){ document.getElementById('bkTable').innerHTML='<div class="empty">请输入实例ID</div>'; document.getElementById('bkStats').innerHTML='<div class="empty">选择实例查看统计</div>'; document.getElementById('bkChart').innerHTML=''; return; }
+  const r=await api(`/api/instance/${encodeURIComponent(inst)}/bookkeeping/records?limit=100`);
+  const stats=r.stats||{}; const data=r.data||[];
+  document.getElementById('bkStats').innerHTML=`
+    <div class="stat"><div class="ic-circle" style="background:rgba(63,185,80,.15);color:#3fb950">+</div><div class="label">收入</div><div class="value" style="color:#3fb950">¥${(stats.income||0).toFixed(2)}</div><div class="sub">${stats.income_count||0} 笔</div></div>
+    <div class="stat"><div class="ic-circle" style="background:rgba(248,81,73,.15);color:#f85149">-</div><div class="label">支出</div><div class="value" style="color:#f85149">¥${(stats.expense||0).toFixed(2)}</div><div class="sub">${stats.expense_count||0} 笔</div></div>
+    <div class="stat"><div class="ic-circle" style="background:rgba(56,139,253,.15);color:#2f81f7">=</div><div class="label">结余</div><div class="value">¥${(stats.balance||0).toFixed(2)}</div></div>`;
+  const total=(stats.income||0)+(stats.expense||0)||1;
+  document.getElementById('bkChart').innerHTML=`<div style="font-size:12px;color:var(--fg-muted);margin-bottom:6px">收支占比</div>
+    <div class="row" style="align-items:center"><div class="bar" style="flex:1"><i style="width:${(stats.income||0)/total*100}%;background:#3fb950"></i></div>
+    <span style="font-size:12px;color:#3fb950">收入</span><div class="bar" style="flex:1;margin-left:10px"><i style="width:${(stats.expense||0)/total*100}%;background:#f85149"></i></div>
+    <span style="font-size:12px;color:#f85149">支出</span></div>`;
+  document.getElementById('bkTable').innerHTML = data.length? `
+    <table><thead><tr><th>类型</th><th>金额</th><th>分类</th><th>备注</th><th>对方</th><th>时间</th></tr></thead><tbody>
+    ${data.map(b=>`<tr><td><span class="tag ${b.kind}">${b.kind==='income'?'收入':'支出'}</span></td><td>¥${(+b.amount).toFixed(2)}</td><td>${esc(b.category||'-')}</td><td>${esc(b.note||'-')}</td><td>${esc(b.wxid)}</td><td>${timeFmt(b.created_at)}</td></tr>`).join('')}
+    </tbody></table>` : '<div class="empty">无记录</div>';
+}
+
+/* ======================== 设置 ======================== */
+async function loadSettings(){
+  const r=await api('/api/health');
+  const s=r.version||{};
+  document.getElementById('cfgApi').value=`${location.hostname}:${location.port}`;
+  document.getElementById('cfgWxVer').value=r.version||'';
+  // 这些字段为只读展示, 实际值来自后端 settings
+  fetch(API+'/api/dashboard').then(r=>r.json()).then(d=>{
+    document.getElementById('sysInfo').innerHTML = `运行模式: ${d.mock_mode?'Mock 模拟':'真实模式'}<br>WebSocket 连接: ${d.ws_connections}<br>死信队列: ${d.mq_dead_letter||0} 条<br>许可证: ${d.license_status?'<span style="color:#3fb950">有效</span>':'<span style="color:#f85149">无效</span>'}`;
+  });
+  document.getElementById('fwStatus').innerHTML='防火墙模块已加载 (黑/白名单持久化到数据库)';
+}
+
+/* ======================== 初始化 ======================== */
+async function init(){
+  // 系统状态
+  try{
+    const h=await api('/api/health');
+    document.getElementById('sysStatus').className='status-dot '+(h.status==='ok'?'online':'offline');
+    document.getElementById('licenseTag').textContent='系统: '+(h.status==='ok'?'运行中':'异常');
+  }catch(e){ document.getElementById('sysStatus').className='status-dot offline'; }
+  loadDashboard();
+}
+init();
+setInterval(()=>{ if(!document.getElementById('page-dashboard').classList.contains('hide')) loadDashboard(); }, 10000);
+</script>
+</body>
+</html>
